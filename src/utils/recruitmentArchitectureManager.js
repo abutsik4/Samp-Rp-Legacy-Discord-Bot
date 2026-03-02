@@ -30,6 +30,31 @@ const PACK_GLOBAL_PERMISSIONS = {
 const WORKFLOW_REQUEST_AUDIENCES = new Set(['all_members', 'staff_only']);
 const WORKFLOW_CATEGORY_VISIBILITY = new Set(['public', 'restricted']);
 
+const DEFAULT_ROLE_REQUEST_MESSAGES = {
+  requesterCreatedReply: 'Запрос создан. Ожидайте решение администратора в канале одобрения.',
+  approvalsCreatedPost:
+    '📝 Новый запрос на роль: {packLabel} для {targetMention} (инициатор: {requesterMention}).\n' +
+    'Причина: {reason}\n\n' +
+    'Чтобы принять решение, ответьте на это сообщение: `!одобрить` или `!отклонить причина`.',
+  approvalsDecisionPost:
+    '{statusEmoji} Запрос {statusPast} администратором {approverMention} для {targetMention} ({packLabel}).{decisionReasonLine}',
+  requestsDecisionPost:
+    '📣 Запрос для {targetMention} ({packLabel}) {statusPastLower}.{decisionReasonLine}'
+};
+
+function normaliseRoleRequestMessages(rawMessages) {
+  const incoming = rawMessages && typeof rawMessages === 'object' ? rawMessages : {};
+  const out = { ...DEFAULT_ROLE_REQUEST_MESSAGES };
+
+  for (const key of Object.keys(DEFAULT_ROLE_REQUEST_MESSAGES)) {
+    if (typeof incoming[key] === 'string') {
+      out[key] = incoming[key];
+    }
+  }
+
+  return out;
+}
+
 function normaliseRoleStringArray(value) {
   if (Array.isArray(value)) {
     return value.map(v => String(v || '').trim()).filter(Boolean);
@@ -113,6 +138,10 @@ function getGuildConfig(guildId) {
       ...(cfg.defaults.roles || {}),
       ...(guildCfg.roles || {})
     },
+    messages: {
+      ...(cfg.defaults.messages || {}),
+      ...(guildCfg.messages || {})
+    },
     pins: {
       ...(cfg.defaults.pins || {}),
       ...(guildCfg.pins || {})
@@ -127,7 +156,30 @@ function getGuildConfig(guildId) {
     merged.roles || {}
   );
 
+  merged.messages = normaliseRoleRequestMessages(merged.messages);
+
   return merged;
+}
+
+function getRecruitmentMessageTemplates(guildId) {
+  const cfg = getGuildConfig(guildId);
+  return normaliseRoleRequestMessages(cfg.messages);
+}
+
+function saveRecruitmentMessageTemplates(guildId, messagesPatch = {}) {
+  const raw = loadRawConfig();
+  raw.guilds = raw.guilds || {};
+  raw.guilds[guildId] = raw.guilds[guildId] || {};
+
+  const current = getRecruitmentMessageTemplates(guildId);
+  const next = normaliseRoleRequestMessages({
+    ...current,
+    ...(messagesPatch && typeof messagesPatch === 'object' ? messagesPatch : {})
+  });
+
+  raw.guilds[guildId].messages = next;
+  saveRawConfig(raw);
+  return next;
 }
 
 function getRecruitmentWorkflowPolicy(guildId) {
@@ -1237,9 +1289,11 @@ async function enforceRecruitmentAnnouncementMessage(message) {
 module.exports = {
   PACK_CHOICES,
   getGuildConfig,
+  getRecruitmentMessageTemplates,
   getRecruitmentWorkflowPolicy,
   getRecruitmentStateForGuild,
   saveRecruitmentWorkflowPolicy,
+  saveRecruitmentMessageTemplates,
   saveDefaultSnapshotForGuild,
   setupRecruitmentArchitecture,
   setupRecruitmentForGuild,

@@ -18,9 +18,11 @@ const { sendTelegram } = require('./utils/telegram');
 const {
   PACK_CHOICES,
   getGuildConfig,
+  getRecruitmentMessageTemplates,
   getRecruitmentWorkflowPolicy,
   getRecruitmentStateForGuild,
   saveRecruitmentWorkflowPolicy,
+  saveRecruitmentMessageTemplates,
   saveDefaultSnapshotForGuild,
   setupRecruitmentForGuild,
   assignPackRoleForGuild,
@@ -42,6 +44,11 @@ const PANEL_OVERVIEW_SUBTITLE =
   branding.panelOverviewSubtitle || `Simple control panel for ${BRAND_NAME} Discord bot.`;
 
 const ROLE_REQUESTABLE_PACKS = ['leader_recruitment', 'deputy_recruitment', 'member_base'];
+const ROLE_REQUEST_PACK_LABELS = {
+  leader_recruitment: 'Лидер',
+  deputy_recruitment: 'Заместитель',
+  member_base: 'База'
+};
 const ROLE_REQUEST_PACK_ALIASES = {
   'leader_recruitment': 'leader_recruitment',
   'лидер': 'leader_recruitment',
@@ -104,6 +111,45 @@ function toSingleString(value, fallback = '') {
   if (Array.isArray(value)) return String(value[0] ?? fallback);
   if (value == null) return fallback;
   return String(value);
+}
+
+function renderTemplate(template, vars) {
+  const text = String(template || '');
+  return text.replace(/\{([a-zA-Z0-9_]+)\}/g, (_, key) => {
+    if (!vars || typeof vars !== 'object') return '';
+    const value = vars[key];
+    return value == null ? '' : String(value);
+  });
+}
+
+function getRoleRequestPackLabel(pack) {
+  return ROLE_REQUEST_PACK_LABELS[pack] || pack || '—';
+}
+
+function buildRoleRequestTemplateVars(entry, context, extra = {}) {
+  const id = entry && entry.id ? String(entry.id) : '';
+  const reason = entry && entry.reason ? String(entry.reason) : '';
+  const decisionReason = entry && entry.decisionReason ? String(entry.decisionReason) : '';
+  const statusPast = entry && entry.status === 'approved' ? 'ОДОБРЕН' : 'ОТКЛОНЕН';
+  const statusPastLower = statusPast.toLowerCase();
+
+  return {
+    id,
+    idShort: id ? id.slice(0, 8) : '',
+    idSpoiler: id ? `||${id}||` : '',
+    pack: entry && entry.pack ? String(entry.pack) : '',
+    packLabel: getRoleRequestPackLabel(entry && entry.pack),
+    reason: reason || '—',
+    decisionReason: decisionReason || '',
+    decisionReasonLine: decisionReason ? `\nПричина решения: ${decisionReason}` : '',
+    requesterMention: entry && entry.requestedByUserId ? `<@${entry.requestedByUserId}>` : '',
+    targetMention: entry && entry.targetUserId ? `<@${entry.targetUserId}>` : '',
+    approverMention: entry && entry.decidedByUserId ? `<@${entry.decidedByUserId}>` : '',
+    statusPast,
+    statusPastLower,
+    statusEmoji: entry && entry.status === 'approved' ? '✅' : '⛔',
+    ...extra
+  };
 }
 
 function normaliseStringArray(value) {
@@ -310,6 +356,25 @@ function resolveRoleRequestPack(rawValue) {
   return ROLE_REQUEST_PACK_ALIASES[normalized] || '';
 }
 
+function looksLikeRoleRequestId(value) {
+  const v = String(value || '').trim();
+  if (!v) return false;
+  // Accept UUIDs and our fallback `${Date.now()}-${hex}` ids.
+  return /^[a-z0-9-]{8,}$/i.test(v);
+}
+
+function extractRoleRequestIdFromText(text) {
+  const raw = String(text || '');
+  // Preferred format used by this bot in approvals channel: [ROLE_REQUEST:<id>]
+  const bracketMatch = raw.match(/\[ROLE_REQUEST:([^\]]+)]/i);
+  if (bracketMatch && looksLikeRoleRequestId(bracketMatch[1])) return bracketMatch[1];
+
+  const looseMatch = raw.match(/ROLE_REQUEST:([a-z0-9-]{8,})/i);
+  if (looseMatch && looksLikeRoleRequestId(looseMatch[1])) return looseMatch[1];
+
+  return '';
+}
+
 function memberHasAnyRole(member, roleIds) {
   return roleIds.filter(Boolean).some(roleId => member.roles.cache.has(roleId));
 }
@@ -400,7 +465,8 @@ function getWorkflowApproverRoleIds(context) {
     context.roles.adminFull && context.roles.adminFull.id,
     context.roles.adminMod && context.roles.adminMod.id,
     ...(context.workflowApproverRolesByName || []).map(role => role.id),
-    ...(context.workflowApproverRolesById || []).map(role => role.id)
+    ...(context.workflowApproverRolesById || []).map(role => role.id),
+    ...(((context.state && context.state.roleIds && context.state.roleIds.workflowApprovers) || []).map(String))
   ].filter(Boolean))];
 }
 
@@ -418,7 +484,7 @@ async function createRecruitmentRoleRequest(guild, requestedByUserId, targetUser
       context.roles.memberBase && context.roles.memberBase.id
     ]);
   if (!canRequest) {
-    throw new Error('У вас нет прав на создание запроса роли.');
+    throw new Error('Только лидер/зам/админ может создавать запрос на роль.');
   }
 
   if (!ROLE_REQUESTABLE_PACKS.includes(pack)) {
@@ -445,10 +511,13 @@ async function createRecruitmentRoleRequest(guild, requestedByUserId, targetUser
   list.push(entry);
   saveRoleRequests(payload);
 
+  const templates = getRecruitmentMessageTemplates(guild.id);
+  const marker = `||[ROLE_REQUEST:${entry.id}]||`;
+
   if (context.approvalsChannel) {
-    await context.approvalsChannel.send(
-      `📝 [ROLE_REQUEST:${requestId}] Запрос от <@${requestedByUserId}> на выдачу \`${pack}\` пользователю <@${targetUserId}>\nПричина: ${reason || '—'}\nРешение: ожидает администратора.`
-    );
+    const vars = buildRoleRequestTemplateVars(entry, context);
+    const messageText = renderTemplate(templates.approvalsCreatedPost, vars).trim();
+    await context.approvalsChannel.send(`${marker} ${messageText}`.trim());
   }
 
   return { entry, context };
@@ -489,19 +558,18 @@ async function decideRecruitmentRoleRequest(guild, requestId, action, approverUs
   entry.decisionReason = String(decisionReason || '').trim();
   saveRoleRequests(payload);
 
-  const resultText = action === 'approve' ? 'ОДОБРЕН' : 'ОТКЛОНЕН';
-  const reasonText = entry.decisionReason ? `\nПричина решения: ${entry.decisionReason}` : '';
+  const templates = getRecruitmentMessageTemplates(guild.id);
+  const marker = `||[ROLE_REQUEST:${entry.id}]||`;
+  const vars = buildRoleRequestTemplateVars(entry, context);
 
   if (context.approvalsChannel) {
-    await context.approvalsChannel.send(
-      `✅ [ROLE_REQUEST:${entry.id}] ${resultText} администратором <@${approverUserId}> для <@${entry.targetUserId}> (${entry.pack}).${reasonText}`
-    );
+    const messageText = renderTemplate(templates.approvalsDecisionPost, vars).trim();
+    await context.approvalsChannel.send(`${marker} ${messageText}`.trim());
   }
 
   if (context.roleRequestsChannel) {
-    await context.roleRequestsChannel.send(
-      `📣 Запрос ${entry.id} ${action === 'approve' ? 'одобрен' : 'отклонен'} администратором <@${approverUserId}> для <@${entry.targetUserId}> (${entry.pack}).${reasonText}`
-    );
+    const messageText = renderTemplate(templates.requestsDecisionPost, vars).trim();
+    await context.roleRequestsChannel.send(messageText);
   }
 
   return entry;
@@ -511,7 +579,10 @@ async function handleRecruitmentRoleRequestMessage(message) {
   if (!message.guild || message.author.bot) return false;
 
   const content = String(message.content || '').trim();
-  if (!content.startsWith('!')) return false;
+  const hasPrefix = content.startsWith('!') || content.startsWith(':');
+  if (!hasPrefix) return false;
+
+  const commandText = content.slice(1).trim();
 
   const context = await resolveRecruitmentWorkflowContext(message.guild);
   const requestChannelId = context.roleRequestsChannel && context.roleRequestsChannel.id;
@@ -520,13 +591,13 @@ async function handleRecruitmentRoleRequestMessage(message) {
   if (!requestChannelId && !approvalsChannelId) return false;
 
   if (message.channelId === requestChannelId) {
-    if (!content.toLowerCase().startsWith('!роль ')) return false;
+    if (!commandText.toLowerCase().startsWith('роль ')) return false;
 
-    const parts = content.split(/\s+/).filter(Boolean);
+    const parts = commandText.split(/\s+/).filter(Boolean);
     const pack = resolveRoleRequestPack(parts[1]);
     const mentionedMember = message.mentions.members && message.mentions.members.first();
     if (!pack || !mentionedMember) {
-      await message.reply('Формат: `!роль <лидер|зам|база> @пользователь <причина>`');
+      await message.reply('Формат: `!роль <лидер|зам|база> @пользователь <причина>` (также поддерживается `:роль`)');
       return true;
     }
 
@@ -544,9 +615,10 @@ async function handleRecruitmentRoleRequestMessage(message) {
         'discord-channel'
       );
 
-      await message.reply(
-        `Запрос создан: ID \`${result.entry.id}\`. Ожидайте решение администратора в канале одобрения.`
-      );
+      const templates = getRecruitmentMessageTemplates(message.guild.id);
+      const vars = buildRoleRequestTemplateVars(result.entry, result.context);
+      const replyText = renderTemplate(templates.requesterCreatedReply, vars).trim();
+      await message.reply(replyText || 'Запрос создан.');
     } catch (err) {
       await message.reply(err.message || 'Не удалось создать запрос.');
     }
@@ -555,19 +627,34 @@ async function handleRecruitmentRoleRequestMessage(message) {
   }
 
   if (message.channelId === approvalsChannelId) {
-    const lower = content.toLowerCase();
-    const isApprove = lower.startsWith('!одобрить ');
-    const isReject = lower.startsWith('!отклонить ');
+    const lower = commandText.toLowerCase();
+    const isApprove = lower === 'одобрить' || lower.startsWith('одобрить ');
+    const isReject = lower === 'отклонить' || lower.startsWith('отклонить ');
     if (!isApprove && !isReject) return false;
 
-    const parts = content.split(/\s+/).filter(Boolean);
-    const requestId = String(parts[1] || '').trim();
+    const parts = commandText.split(/\s+/).filter(Boolean);
+    const explicitId = looksLikeRoleRequestId(parts[1]) ? String(parts[1]).trim() : '';
+    let requestId = explicitId;
+
+    // Allow approvals by replying to the bot message containing [ROLE_REQUEST:<id>]
+    if (!requestId && message.reference && message.reference.messageId) {
+      try {
+        const referenced = await message.fetchReference();
+        requestId = extractRoleRequestIdFromText(referenced && referenced.content);
+      } catch {
+        // Ignore failures to fetch the referenced message.
+      }
+    }
+
     if (!requestId) {
-      await message.reply('Формат: `!одобрить <ID>` или `!отклонить <ID> <причина>`');
+      await message.reply(
+        'Формат: `!одобрить <ID>` или `!отклонить <ID> <причина>` (также `:одобрить`/`:отклонить`).\n' +
+        'Либо ответьте (reply) на сообщение бота вида `[ROLE_REQUEST:ID] ...` и напишите `!одобрить` или `!отклонить причина`.'
+      );
       return true;
     }
 
-    const decisionReason = parts.slice(2).join(' ').trim();
+    const decisionReason = (explicitId ? parts.slice(2) : parts.slice(1)).join(' ').trim();
 
     try {
       await decideRecruitmentRoleRequest(
@@ -2846,6 +2933,7 @@ app.get('/recruitment', async (req, res) => {
 
     const cfg = getGuildConfig(guild.id);
     const workflow = getRecruitmentWorkflowPolicy(guild.id);
+    const templates = getRecruitmentMessageTemplates(guild.id);
     const state = getRecruitmentStateForGuild(guild.id);
     const members = guild.members.cache
       .filter(m => !m.user.bot)
@@ -3001,8 +3089,41 @@ app.get('/recruitment', async (req, res) => {
           <h2 style="margin-top:0;font-size:1rem;">Запросы ролей через Discord</h2>
           <div class="hint">Создание запросов: <strong>#${escapeHtml((cfg.channels && cfg.channels.roleRequests) || ROLE_REQUESTS_FALLBACK_CHANNEL)}</strong></div>
           <div class="hint">Одобрение в закрытом канале: <strong>#${escapeHtml((cfg.channels && cfg.channels.approvals) || ROLE_APPROVALS_FALLBACK_CHANNEL)}</strong></div>
-          <div class="hint" style="margin-top:8px;">Команда для запроса: <strong>!роль &lt;лидер|зам|база&gt; @пользователь причина</strong></div>
+          <div class="hint" style="margin-top:8px;">Команда для запроса: <strong>!роль</strong> (или <strong>:роль</strong>) <strong>&lt;лидер|зам|база&gt; @пользователь причина</strong></div>
           <div class="hint">Команды для одобряющих ролей: <strong>!одобрить &lt;ID&gt;</strong> и <strong>!отклонить &lt;ID&gt; причина</strong></div>
+          <div class="hint" style="margin-top:6px;">Также можно ответить (reply) на сообщение бота в канале одобрений и написать <strong>!одобрить</strong> или <strong>!отклонить причина</strong>.</div>
+        </div>
+
+        <div class="glass-card" style="margin-top:14px;">
+          <h2 style="margin-top:0;font-size:1rem;">Шаблоны сообщений (запросы ролей)</h2>
+          <div class="hint">Переменные: <strong>{requesterMention}</strong>, <strong>{targetMention}</strong>, <strong>{packLabel}</strong>, <strong>{reason}</strong>, <strong>{approverMention}</strong>, <strong>{decisionReasonLine}</strong>, <strong>{statusEmoji}</strong>, <strong>{statusPast}</strong>, <strong>{statusPastLower}</strong>.</div>
+          <div class="hint">ID запроса доступен как <strong>{id}</strong>, <strong>{idShort}</strong>, <strong>{idSpoiler}</strong>. Для reply-одобрения бот добавляет скрытый маркер автоматически.</div>
+
+          <form id="recruitmentMessagesForm" style="margin-top:12px;">
+            <label>
+              Ответ пользователю при создании (в #запросы-ролей)
+              <textarea name="requesterCreatedReply" rows="3" placeholder="Запрос создан...">${escapeHtml(templates.requesterCreatedReply || '')}</textarea>
+            </label>
+
+            <label>
+              Сообщение в канал одобрений при создании
+              <textarea name="approvalsCreatedPost" rows="5" placeholder="📝 Новый запрос...">${escapeHtml(templates.approvalsCreatedPost || '')}</textarea>
+            </label>
+
+            <label>
+              Сообщение в канал одобрений после решения
+              <textarea name="approvalsDecisionPost" rows="4" placeholder="✅ Запрос одобрен...">${escapeHtml(templates.approvalsDecisionPost || '')}</textarea>
+            </label>
+
+            <label>
+              Сообщение в #запросы-ролей после решения
+              <textarea name="requestsDecisionPost" rows="4" placeholder="📣 Запрос ...">${escapeHtml(templates.requestsDecisionPost || '')}</textarea>
+            </label>
+
+            <div class="btn-row">
+              <button type="submit" class="primary">Сохранить шаблоны</button>
+            </div>
+          </form>
         </div>
       </section>
     `;
@@ -3144,6 +3265,37 @@ app.get('/recruitment', async (req, res) => {
                 showToast('Network error during pack update', true);
               });
           });
+        });
+      }
+
+      var messagesForm = document.getElementById('recruitmentMessagesForm');
+      if (messagesForm) {
+        messagesForm.addEventListener('submit', function (e) {
+          e.preventDefault();
+          var fd = new FormData(messagesForm);
+
+          fetch('/recruitment/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              requesterCreatedReply: (fd.get('requesterCreatedReply') || '').toString(),
+              approvalsCreatedPost: (fd.get('approvalsCreatedPost') || '').toString(),
+              approvalsDecisionPost: (fd.get('approvalsDecisionPost') || '').toString(),
+              requestsDecisionPost: (fd.get('requestsDecisionPost') || '').toString()
+            })
+          })
+            .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+            .then(function (result) {
+              if (!result.ok) {
+                showToast(result.data.message || 'Templates update failed', true);
+                return;
+              }
+              showToast(result.data.message || 'Templates updated', false);
+              setTimeout(function () { window.location.reload(); }, 700);
+            })
+            .catch(function () {
+              showToast('Network error while updating templates', true);
+            });
         });
       }
 
@@ -3311,6 +3463,39 @@ app.post('/recruitment/pack', async (req, res) => {
   } catch (err) {
     console.error('Recruitment pack operation error:', err);
     return res.status(500).json({ ok: false, message: err.message || 'Pack operation failed.' });
+  }
+});
+
+app.post('/recruitment/messages', async (req, res) => {
+  try {
+    const guildId = process.env.GUILD_ID;
+    if (!guildId) {
+      return res.status(400).json({ ok: false, message: 'GUILD_ID not set.' });
+    }
+
+    const patch = {
+      requesterCreatedReply: toSingleString(req.body && req.body.requesterCreatedReply, ''),
+      approvalsCreatedPost: toSingleString(req.body && req.body.approvalsCreatedPost, ''),
+      approvalsDecisionPost: toSingleString(req.body && req.body.approvalsDecisionPost, ''),
+      requestsDecisionPost: toSingleString(req.body && req.body.requestsDecisionPost, '')
+    };
+
+    const MAX_LEN = 1800;
+    for (const [key, value] of Object.entries(patch)) {
+      if (typeof value !== 'string') continue;
+      if (value.length > MAX_LEN) {
+        return res.status(400).json({
+          ok: false,
+          message: `Template ${key} is too long (${value.length}). Max ${MAX_LEN} characters.`
+        });
+      }
+    }
+
+    const saved = saveRecruitmentMessageTemplates(guildId, patch);
+    return res.json({ ok: true, message: 'Message templates saved.', templates: saved });
+  } catch (err) {
+    console.error('Recruitment messages update error:', err);
+    return res.status(500).json({ ok: false, message: err.message || 'Templates update failed.' });
   }
 });
 

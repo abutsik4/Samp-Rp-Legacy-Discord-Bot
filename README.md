@@ -56,9 +56,16 @@ Default channel names (configurable in `recruitment-architecture.json`):
 Commands:
 - In `📝│запросы-ролей`:
   - `!роль <лидер|зам|база> @user <reason>`
+  - `:роль <лидер|зам|база> @user <reason>`
 - In `🔐│одобрение-ролей`:
-  - `!одобрить <ID>`
-  - `!отклонить <ID> <reason>`
+  - `!одобрить <ID>` / `:одобрить <ID>`
+  - `!отклонить <ID> <reason>` / `:отклонить <ID> <reason>`
+
+Reply approvals (recommended):
+- In `🔐│одобрение-ролей`, reply to the bot message that contains the role request and send:
+  - `!одобрить` (or `:одобрить`)
+  - `!отклонить <reason>` (or `:отклонить <reason>`)
+  The bot will auto-detect the request ID from the replied-to message.
 
 ## User-facing update (2026-03)
 
@@ -88,6 +95,17 @@ Open `/recruitment` in WebUI and use **Role Request Workflow Policy** to:
 - set category visibility (`public` or `restricted`)
 - configure additional approver roles by name or by role ID
 - optionally apply setup immediately after saving policy
+
+### WebUI message templates
+
+Open `/recruitment` in WebUI and use **Шаблоны сообщений (запросы ролей)** to customize the automated messages:
+- user reply after creating a request
+- approvals channel post on request creation
+- approvals channel post after approve/reject
+- request channel post after approve/reject
+
+Notes:
+- The bot adds a hidden marker to approvals-channel posts so reply-based approvals can work without showing full IDs in public text.
 
 ## Security / what not to commit
 
