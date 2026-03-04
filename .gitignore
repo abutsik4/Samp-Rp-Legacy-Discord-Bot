@@ -21,6 +21,10 @@ data/messages.json
 data/recruitment-architecture-state.json
 data/recruitment-role-requests.json
 
+# Auto-roles and telegram notifier state are runtime/local
+data/autoroles.json
+data/telegram-notify-state.json
+
 # Embeds library is edited at runtime (lastMessageId/lastChannelId)
 data/embeds.json
 

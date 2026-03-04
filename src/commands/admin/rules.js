@@ -7,7 +7,7 @@ const { baseEmbed } = require('../../utils/embedFactory');
 const config = require('../../../config.json');
 
 const branding = config.branding || {};
-const brandName = branding.name || 'VPROJECT';
+const brandName = branding.name || 'SRP Legacy';
 
 module.exports = {
     data: new SlashCommandBuilder()

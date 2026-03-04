@@ -61,7 +61,7 @@ function main() {
 
   const scanFiles = walk(path.join(root, 'src')).filter(filePath => filePath.endsWith('.js'));
   const bannedPatterns = [
-    /VPROJECT\s*•\s*Alpha/gi,
+    /\s*•\s*Alpha/gi,
     /Bot Control Panel \(Alpha\)/gi,
     /\*\*Alpha\*\*/g
   ];

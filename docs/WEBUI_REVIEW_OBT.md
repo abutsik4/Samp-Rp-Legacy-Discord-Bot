@@ -56,6 +56,6 @@ This review covers the runtime WebUI served by `src/index.js` and related data/A
 2. Configure `WEBUI_AUTH_TOKEN` (or `config.webui.authToken`) and keep `webui.requireAuth=true`.
 3. Run `npm run smoke:webui` with `WEBUI_BASE_URL` and `WEBUI_AUTH_TOKEN` set.
 4. Verify `/` sidebar shows `Bot Control Panel (OBT)`.
-5. Verify bot presence is `VPROJECT • OBT`.
+5. Verify bot presence is `SRP Legacy • OBT`.
 6. Verify `/help` command description reflects OBT.
 7. Verify no user-facing Alpha label remains unless intentionally historical.

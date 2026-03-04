@@ -1,0 +1,13 @@
+[Unit]
+Description=SRP Legacy Bot failure notifier for %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/
+ExecStart=/opt/SRP_Legacy_Discord_Bot/scripts/telegram-notify.sh %i failure
+
+[Install]
+WantedBy=multi-user.target

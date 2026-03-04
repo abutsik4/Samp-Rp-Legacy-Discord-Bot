@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="SRP Legacy Discord server logo">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3b82f6"/>
+      <stop offset="60%" stop-color="#8b5cf6"/>
+      <stop offset="100%" stop-color="#22c55e"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="14" y="14" width="228" height="228" rx="56" fill="#020617"/>
+  <rect x="18" y="18" width="220" height="220" rx="52" fill="url(#g)" opacity="0.20"/>
+
+  <!-- Chat bubble -->
+  <path d="M64 84c0-18 14-32 32-32h64c18 0 32 14 32 32v52c0 18-14 32-32 32h-38l-26 18c-6 4-14 0-14-7v-11h-18c-18 0-32-14-32-32V84z" fill="#0f172a" opacity="0.95"/>
+  <circle cx="104" cy="112" r="10" fill="#e2e8f0"/>
+  <circle cx="152" cy="112" r="10" fill="#e2e8f0"/>
+  <rect x="92" y="132" width="72" height="10" rx="5" fill="#94a3b8"/>
+
+  <!-- SRP wordmark -->
+  <text x="128" y="206" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial" font-size="30" font-weight="900" letter-spacing="2" fill="#ffffff">SRP</text>
+</svg>

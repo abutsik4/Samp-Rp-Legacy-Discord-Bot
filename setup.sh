@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🚀 VPROJECT Bot - Setup & Start Script"
+echo "🚀 SRP Legacy Bot - Setup & Start Script"
 echo "========================================"
 echo ""
 
@@ -37,6 +37,6 @@ read
 # Start the bot
 echo ""
 echo "🤖 Starting bot..."
-echo "🌐 Web panel: http://localhost:${PORT:-3001}"
+echo "🌐 Web panel: http://localhost:${PORT:-3000}"
 echo ""
 npm start

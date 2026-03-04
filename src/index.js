@@ -30,7 +30,7 @@ const {
 } = require('./utils/recruitmentArchitectureManager');
 
 const branding = config.branding || {};
-const BRAND_NAME = branding.name || 'VPROJECT';
+const BRAND_NAME = branding.name || 'SRP Legacy';
 const PROJECT_PHASE = branding.phase || 'OBT';
 const BOT_ALERT_PREFIX = branding.alertPrefix || `${BRAND_NAME} bot`;
 const BOT_PRESENCE = branding.presence || `${BRAND_NAME} • ${PROJECT_PHASE}`;
@@ -922,7 +922,7 @@ const WEBUI_LOGIN_PASSWORD =
   process.env.WEBUI_LOGIN_PASSWORD || WEBUI_AUTH_TOKEN || '';
 const WEBUI_SESSION_SECRET =
   process.env.WEBUI_SESSION_SECRET || WEBUI_LOGIN_PASSWORD || WEBUI_AUTH_TOKEN;
-const WEBUI_SESSION_COOKIE = 'vproject_webui_session';
+const WEBUI_SESSION_COOKIE = 'srp_legacy_webui_session';
 const WEBUI_SESSION_TTL_SEC = Number(
   process.env.WEBUI_SESSION_TTL_SEC || 12 * 60 * 60
 );

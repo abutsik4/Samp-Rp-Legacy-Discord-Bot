@@ -3,9 +3,10 @@ set -euo pipefail
 
 # Sends a plain text Telegram message.
 # Prefers TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID from environment.
-# Falls back to /opt/jepsencloud-bot/.env (so it matches your existing setup).
+# Falls back to this bot's own .env (no dependency on other projects).
 
-ENV_FALLBACK="/opt/jepsencloud-bot/.env"
+BOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENV_FALLBACK="$BOT_DIR/.env"
 
 get_env_value() {
   local key="$1" file="$2"
@@ -28,8 +29,8 @@ if [[ -z "$TELEGRAM_CHAT_ID" ]]; then
   TELEGRAM_CHAT_ID=$(get_env_value "TELEGRAM_CHAT_ID" "$ENV_FALLBACK" || true)
 fi
 
-: "${TELEGRAM_BOT_TOKEN:?Missing TELEGRAM_BOT_TOKEN (set env or in /opt/jepsencloud-bot/.env)}"
-: "${TELEGRAM_CHAT_ID:?Missing TELEGRAM_CHAT_ID (set env or in /opt/jepsencloud-bot/.env)}"
+: "${TELEGRAM_BOT_TOKEN:?Missing TELEGRAM_BOT_TOKEN (set env or in $ENV_FALLBACK)}"
+: "${TELEGRAM_CHAT_ID:?Missing TELEGRAM_CHAT_ID (set env or in $ENV_FALLBACK)}"
 
 TEXT=${1:-}
 if [[ -z "$TEXT" ]]; then

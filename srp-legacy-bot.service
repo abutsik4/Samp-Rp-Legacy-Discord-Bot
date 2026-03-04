@@ -1,0 +1,46 @@
+[Unit]
+Description=SRP Legacy Discord Bot
+Wants=network-online.target
+After=network-online.target
+
+# If the service enters a crash loop, don't hammer Discord reconnect/identify.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# Telegram warning (legacy instance)
+OnFailure=srp-legacy-bot-failure@%n.service
+
+[Service]
+Type=simple
+User=jepsen
+WorkingDirectory=/opt/SRP_Legacy_Discord_Bot
+
+# Load secrets and config (DISCORD_TOKEN, PORT, etc.)
+EnvironmentFile=/opt/SRP_Legacy_Discord_Bot/.env
+
+Environment="PATH=/opt/SRP_Legacy_Discord_Bot/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
+
+# Main process
+ExecStart=/usr/bin/node /opt/SRP_Legacy_Discord_Bot/src/index.js
+
+# Auto-restart on failure
+Restart=always
+RestartSec=10
+
+# Give Node time to flush data on SIGTERM
+TimeoutStopSec=30
+KillSignal=SIGTERM
+KillMode=mixed
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=srp-legacy-bot
+
+# Resource limits
+MemoryLimit=512M
+CPUQuota=80%
+
+# Security
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

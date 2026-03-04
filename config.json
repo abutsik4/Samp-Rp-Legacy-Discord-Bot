@@ -1,26 +1,26 @@
 {
   "ownerId": "000000000000000000",
   "branding": {
-    "name": "VPROJECT",
+    "name": "SRP Legacy",
     "phase": "OBT",
-    "presence": "VPROJECT • OBT",
-    "panelTitle": "VPROJECT Bot Panel",
-    "panelHeaderTitle": "VPROJECT | GTA5RP RAGE:MP",
+    "presence": "SRP Legacy • OBT",
+    "panelTitle": "SRP Legacy Bot Panel",
+    "panelHeaderTitle": "SRP Legacy | GTA5RP RAGE:MP",
     "panelHeaderSubtitle": "Bot Control Panel (OBT)",
-    "panelOverviewSubtitle": "Simple control panel for VPROJECT Discord bot.",
-    "alertPrefix": "VPROJECT bot"
+    "panelOverviewSubtitle": "Simple control panel for SRP Legacy Discord bot.",
+    "alertPrefix": "SRP Legacy bot"
   },
   "webui": {
     "requireAuth": true,
     "authToken": ""
   },
   "brandColor": 44799,
-  "footerText": "VPROJECT • OBT",
+  "footerText": "SRP Legacy • OBT",
   "footerIcon": "",
   "welcome": {
     "enabled": true,
     "channelId": "000000000000000000",
-    "message": "Добро пожаловать на **VPROJECT** — GTA 5 RAGE:MP!\nПрочитай правила, выбери роль и заходи на сервер.",
+    "message": "Добро пожаловать на **SRP Legacy** — GTA 5 RAGE:MP!\nПрочитай правила, выбери роль и заходи на сервер.",
     "autoRoleIds": []
   },
   "logs": {

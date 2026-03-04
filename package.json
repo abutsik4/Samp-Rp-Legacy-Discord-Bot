@@ -1,7 +1,7 @@
 {
-    "name": "vproject-bot",
+    "name": "srp-legacy-discord-bot",
     "version": "0.1.0",
-    "description": "VPROJECT GTA 5 RAGE MP Discord management bot",
+    "description": "SRP Legacy GTA 5 RAGE MP Discord management bot",
     "main": "src/index.js",
     "scripts": {
         "start": "node src/index.js",

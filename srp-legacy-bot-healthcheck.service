@@ -1,0 +1,11 @@
+[Unit]
+Description=SRP Legacy Bot web healthcheck
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=jepsen
+WorkingDirectory=/opt/SRP_Legacy_Discord_Bot
+EnvironmentFile=/opt/SRP_Legacy_Discord_Bot/.env
+ExecStart=/opt/SRP_Legacy_Discord_Bot/scripts/srp-legacy-healthcheck.sh

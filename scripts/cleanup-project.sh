@@ -4,7 +4,7 @@ set -euo pipefail
 # Aggressive cleanup: archive non-essential files for review instead of deleting.
 # Creates backups/cleanup_TIMESTAMP/* folders and moves items there.
 
-ROOT="/opt/vproject-bot"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TS=$(date +%Y%m%d_%H%M%S)
 ARCHIVE="$ROOT/backups/cleanup_$TS"
 

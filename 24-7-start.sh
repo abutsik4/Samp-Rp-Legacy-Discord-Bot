@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# VPROJECT Bot - 24/7 Startup & Management Script
+# SRP Legacy Bot - 24/7 Startup & Management Script
 # Supports: PM2, Docker, Systemd, and Direct Node.js execution
 
 set -e
@@ -16,8 +16,8 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-BOT_NAME="vproject-bot"
-PORT=5011
+BOT_NAME="srp-legacy-bot"
+PORT=3000
 LOG_DIR="./logs"
 PID_FILE="${LOG_DIR}/bot.pid"
 
@@ -26,7 +26,7 @@ mkdir -p "$LOG_DIR"
 
 print_header() {
     echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║   VPROJECT Bot - 24/7 Management       ║${NC}"
+    echo -e "${BLUE}║   SRP Legacy Bot - 24/7 Management    ║${NC}"
     echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
     echo ""
 }
@@ -99,22 +99,22 @@ setup_pm2() {
 setup_systemd() {
     print_info "Setting up systemd service..."
     
-    if [ ! -f "vproject-bot.service" ]; then
-        print_error "vproject-bot.service file not found!"
+    if [ ! -f "srp-legacy-bot.service" ]; then
+        print_error "srp-legacy-bot.service file not found!"
         exit 1
     fi
     
     # Copy service file
-    sudo cp vproject-bot.service /etc/systemd/system/
+    sudo cp srp-legacy-bot.service /etc/systemd/system/
     sudo systemctl daemon-reload
     
     # Enable and start
-    sudo systemctl enable vproject-bot
-    sudo systemctl start vproject-bot
+    sudo systemctl enable srp-legacy-bot
+    sudo systemctl start srp-legacy-bot
     
     print_success "Systemd service installed and started"
-    print_info "Manage service: sudo systemctl [start|stop|restart|status] vproject-bot"
-    print_info "View logs: sudo journalctl -u vproject-bot -f"
+    print_info "Manage service: sudo systemctl [start|stop|restart|status] srp-legacy-bot"
+    print_info "View logs: sudo journalctl -u srp-legacy-bot -f"
     echo ""
 }
 
@@ -146,12 +146,12 @@ show_status() {
         echo ""
         print_info "Recent logs:"
         pm2 logs "$BOT_NAME" --lines 10 --nostream 2>/dev/null || true
-    elif systemctl is-active --quiet vproject-bot 2>/dev/null; then
+    elif systemctl is-active --quiet srp-legacy-bot 2>/dev/null; then
         print_info "Systemd Service:"
-        sudo systemctl status vproject-bot --no-pager || true
+        sudo systemctl status srp-legacy-bot --no-pager || true
         echo ""
         print_info "Recent logs:"
-        sudo journalctl -u vproject-bot -n 10 --no-pager || true
+        sudo journalctl -u srp-legacy-bot -n 10 --no-pager || true
     else
         print_warning "Bot is not running through PM2 or systemd"
     fi
@@ -180,8 +180,8 @@ stop_bot() {
     if command -v pm2 &> /dev/null && pm2 list 2>/dev/null | grep -q "$BOT_NAME"; then
         pm2 stop "$BOT_NAME"
         print_success "Bot stopped via PM2"
-    elif systemctl is-active --quiet vproject-bot 2>/dev/null; then
-        sudo systemctl stop vproject-bot
+    elif systemctl is-active --quiet srp-legacy-bot 2>/dev/null; then
+        sudo systemctl stop srp-legacy-bot
         print_success "Bot stopped via systemd"
     else
         print_warning "Bot not found running"
@@ -193,9 +193,9 @@ view_logs() {
     if command -v pm2 &> /dev/null && pm2 list 2>/dev/null | grep -q "$BOT_NAME"; then
         print_info "PM2 Logs (press Ctrl+C to exit):"
         pm2 logs "$BOT_NAME"
-    elif systemctl is-active --quiet vproject-bot 2>/dev/null; then
+    elif systemctl is-active --quiet srp-legacy-bot 2>/dev/null; then
         print_info "Systemd Logs (press Ctrl+C to exit):"
-        sudo journalctl -u vproject-bot -f
+        sudo journalctl -u srp-legacy-bot -f
     elif [ -f "$LOG_DIR/out.log" ]; then
         print_info "Node.js Logs:"
         tail -f "$LOG_DIR/out.log"

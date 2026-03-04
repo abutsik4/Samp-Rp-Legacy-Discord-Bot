@@ -1,9 +1,14 @@
 <p align="center">
-  <img src="assets/readme-logo.svg" alt="VPROJECT" width="640" />
+  <img src="assets/readme-logo.svg" alt="SRP Legacy" width="640" />
 </p>
 
 <p align="center">
-  Node.js Discord bot for VPROJECT with recruitment category automation and policy-driven role request workflow.
+  Node.js Discord bot for SRP Legacy with recruitment category automation and policy-driven role request workflow.
+</p>
+
+<p align="center">
+  <img src="assets/logo-bot.svg" alt="SRP Legacy bot logo" width="180" />
+  <img src="assets/logo-discord-server.svg" alt="SRP Legacy Discord server logo" width="180" />
 </p>
 
 ## Features

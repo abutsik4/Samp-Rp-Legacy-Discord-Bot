@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# VPROJECT Bot - Quick Management Commands
+# SRP Legacy Bot - Quick Management Commands
 
-BOT_NAME="vproject-bot"
-PORT=5011
+BOT_NAME="srp-legacy-bot"
+PORT=3000
 
 # Colors
 GREEN='\033[0;32m'
@@ -12,7 +12,7 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 echo -e "${BLUE}═══════════════════════════════════════${NC}"
-echo -e "${BLUE}  VPROJECT Bot - Quick Management${NC}"
+echo -e "${BLUE}  SRP Legacy Bot - Quick Management${NC}"
 echo -e "${BLUE}═══════════════════════════════════════${NC}"
 echo ""
 

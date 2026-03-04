@@ -2,7 +2,7 @@ const { EmbedBuilder } = require('discord.js');
 const config = require('../../config.json');
 
 const branding = config.branding || {};
-const brandName = branding.name || 'VPROJECT';
+const brandName = branding.name || 'SRP Legacy';
 
 function baseEmbed() {
     const embed = new EmbedBuilder()

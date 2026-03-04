@@ -8,8 +8,8 @@ set -euo pipefail
 # - Performs a post-sync verification dry-run using checksums
 #
 # Usage examples:
-#   ./scripts/transfer_to_vps.sh --host example.com --user ubuntu --dest /opt/vproject-bot --mode mirror
-#   ./scripts/transfer_to_vps.sh --host example.com --user root --dest /opt/vproject-bot --mode update --no-backup
+#   ./scripts/transfer_to_vps.sh --host example.com --user ubuntu --dest /opt/SRP_Legacy_Discord_Bot --mode mirror
+#   ./scripts/transfer_to_vps.sh --host example.com --user root --dest /opt/SRP_Legacy_Discord_Bot --mode update --no-backup
 #
 # Notes:
 # - If your destination is under /opt, this script uses `sudo rsync` on the remote side.
@@ -18,7 +18,7 @@ set -euo pipefail
 HOST=""
 USER_NAME=""
 SSH_PORT="22"
-DEST="/opt/vproject-bot"
+DEST="/opt/SRP_Legacy_Discord_Bot"
 MODE="mirror"   # mirror|update
 BACKUP="1"       # 1|0
 VERIFY="1"       # 1|0
@@ -31,7 +31,7 @@ Options:
   --host <host>         Remote host/IP (required)
   --user <user>         SSH username (required)
   --port <port>         SSH port (default: 22)
-  --dest <path>         Destination path on remote (default: /opt/vproject-bot)
+  --dest <path>         Destination path on remote (default: /opt/SRP_Legacy_Discord_Bot)
   --mode <mirror|update>  mirror deletes extra remote files; update never deletes (default: mirror)
   --no-backup           Do not create a remote backup before mirroring
   --no-verify           Skip post-sync verification
