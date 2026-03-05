@@ -19,7 +19,9 @@ echo ""
 case "$1" in
     status|log|logs)
         echo -e "${BLUE}📊 Current Status:${NC}"
-        pm2 show $BOT_NAME 2>/dev/null || echo "Bot not running"
+        sudo systemctl status srp-legacy-bot -n 0
+        sudo systemctl status srp-legacy-webui -n 0
+ || echo "Bot not running"
         echo ""
         echo -e "${BLUE}📋 Last 50 Log Lines:${NC}"
         pm2 logs $BOT_NAME --lines 50 --nostream

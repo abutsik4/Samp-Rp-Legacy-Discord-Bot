@@ -16,6 +16,12 @@ const config = require('../config.json');
 const { baseEmbed } = require('./utils/embedFactory');
 const { sendTelegram } = require('./utils/telegram');
 const {
+  handleInteraction: handleRoleRequestInteraction,
+  postRequestPanel,
+  loadRequests: loadFactionRoleRequests,
+  FACTIONS: ROLE_REQUEST_FACTIONS
+} = require('./utils/roleRequestManager');
+const {
   PACK_CHOICES,
   getGuildConfig,
   getRecruitmentMessageTemplates,
@@ -695,10 +701,10 @@ async function warnThrottled(key, text, minIntervalMs) {
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers,
+    ,
     GatewayIntentBits.GuildInvites,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
+    
   ]
 });
 
@@ -900,6 +906,21 @@ client.on(Events.MessageCreate, async message => {
     await enforceRecruitmentAnnouncementMessage(message);
   } catch (err) {
     console.error('Recruitment enforcement error:', err);
+  }
+});
+
+// ── Interaction handler (buttons, select menus) ──
+client.on(Events.InteractionCreate, async interaction => {
+  try {
+    await handleRoleRequestInteraction(interaction);
+  } catch (err) {
+    console.error('[INTERACTION] Error handling interaction:', err);
+    try {
+      const reply = interaction.replied || interaction.deferred
+        ? interaction.followUp.bind(interaction)
+        : interaction.reply.bind(interaction);
+      await reply({ content: '❌ Произошла ошибка. Попробуйте позже.', ephemeral: true });
+    } catch {}
   }
 });
 
@@ -1771,6 +1792,384 @@ function renderLayout(active, bodyHtml, extraScript) {
 // ------------------------------------------------------
 // Page: Overview
 // ------------------------------------------------------
+
+
+// ------------------------------------------------------
+// NEXT.JS API ENDPOINTS
+// ------------------------------------------------------
+
+app.get('/api/overview', async (req, res) => {
+  res.json({
+    subtitle: typeof PANEL_OVERVIEW_SUBTITLE !== 'undefined' ? PANEL_OVERVIEW_SUBTITLE : 'SRP Dashboard',
+    presence: typeof CURRENT_BOT_PRESENCE !== 'undefined' ? CURRENT_BOT_PRESENCE : ''
+  });
+});
+
+app.get('/api/stats', async (req, res) => {
+  try {
+    const guildId = process.env.GUILD_ID;
+    if (!guildId) return res.status(500).json({ error: 'GUILD_ID is not set in .env' });
+    
+    // Check if client is initialized
+    let activeRolesCount = 0;
+    try {
+        const guild = client.guilds.cache.get(guildId);
+        if (guild) {
+            activeRolesCount = guild.roles.cache.size;
+        }
+    } catch(e) {}
+
+    const messageData = typeof loadMessages === 'function' ? loadMessages() : {};
+    const guildData = messageData[guildId] || {};
+    const leaderboard = Object.entries(guildData)
+      .map(([userId, data]) => ({
+        userId,
+        username: data.username || 'Unknown',
+        count: data.count || 0,
+        lastMessage: data.lastMessage || null
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    const totalMessages = leaderboard.reduce((sum, user) => sum + user.count, 0);
+    const totalUsers = leaderboard.length;
+
+    res.json({ 
+        totalMessages, 
+        totalUsers, 
+        leaderboard: leaderboard.slice(0, 100),
+        activeRoles: activeRolesCount
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Logs endpoint
+
+// API: List text channels for WebUI
+app.get('/api/channels', async (req, res) => {
+  try {
+    const guildId = process.env.GUILD_ID;
+    if (!guildId) return res.status(500).json({ error: 'GUILD_ID is not set' });
+    const guild = await client.guilds.fetch(guildId);
+    await guild.channels.fetch();
+    const textChannels = guild.channels.cache
+      .filter(ch => ch.type === ChannelType.GuildText || ch.type === ChannelType.GuildAnnouncement)
+      .sort((a, b) => a.rawPosition - b.rawPosition)
+      .map(ch => ({
+        id: ch.id,
+        name: ch.name,
+        parentName: ch.parent ? ch.parent.name : null,
+        parentId: ch.parentId || null,
+        type: ch.type,
+        position: ch.rawPosition
+      }));
+    res.json({ channels: textChannels });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// API: Send embed (JSON API version for WebUI)
+app.post('/api/send-embed', async (req, res) => {
+  try {
+    const { channelId, title, description, color, fields } = req.body || {};
+    if (!channelId) return res.status(400).json({ ok: false, message: 'channelId обязателен' });
+    if (!title && !description) return res.status(400).json({ ok: false, message: 'Нужен title или description' });
+
+    const channel = await client.channels.fetch(channelId);
+    if (!channel) return res.status(404).json({ ok: false, message: 'Канал не найден' });
+
+    const embed = baseEmbed();
+    if (title) embed.setTitle(title.slice(0, 256));
+    if (description) embed.setDescription(description.slice(0, 4096));
+    if (color && /^#?[0-9a-fA-F]{6}$/.test(color)) {
+      embed.setColor(parseInt(color.replace('#', ''), 16));
+    }
+    if (fields && Array.isArray(fields)) {
+      for (const f of fields.slice(0, 25)) {
+        embed.addFields({ name: (f.name || '\u200b').slice(0, 256), value: (f.value || '\u200b').slice(0, 1024), inline: !!f.inline });
+      }
+    }
+
+    const message = await channel.send({ embeds: [embed] });
+    res.json({ ok: true, messageId: message.id, channelName: channel.name });
+  } catch (err) {
+    console.error('Error in /api/send-embed:', err);
+    if (err.code === 50001) return res.status(403).json({ ok: false, message: 'Бот не имеет доступа к каналу' });
+    if (err.code === 50013) return res.status(403).json({ ok: false, message: 'Бот не может отправлять сообщения в этот канал' });
+    res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
+app.get('/api/embeds', async (req, res) => {
+  try {
+    const embeds = typeof loadEmbeds === 'function' ? loadEmbeds() : [];
+    res.json({ embeds: embeds || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+app.get('/api/structure/status', async (req, res) => {
+  const { getSetupStatus } = require('./utils/factionManager');
+  res.json(getSetupStatus());
+});
+
+// ── Role Requests API ──
+
+app.get('/api/role-requests', async (req, res) => {
+  try {
+    const requests = loadFactionRoleRequests();
+    const status = req.query.status; // ?status=pending
+    const filtered = status ? requests.filter(r => r.status === status) : requests;
+    // Sort newest first
+    filtered.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    res.json({ requests: filtered, total: requests.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/role-requests/:id/approve', async (req, res) => {
+  try {
+    const guildId = process.env.GUILD_ID;
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) return res.status(500).json({ error: 'Guild not found' });
+
+    const requests = loadFactionRoleRequests();
+    const request = requests.find(r => r.id === req.params.id);
+    if (!request) return res.status(404).json({ error: 'Запрос не найден' });
+    if (request.status !== 'pending') return res.status(400).json({ error: 'Запрос уже рассмотрен' });
+
+    const member = await guild.members.fetch(request.userId);
+    const role = guild.roles.cache.find(r => r.name === request.roleName);
+    if (!role) return res.status(404).json({ error: `Роль ${request.roleName} не найдена` });
+
+    await member.roles.add(role, 'Approved via WebUI');
+    request.status = 'approved';
+    request.approvedBy = 'webui';
+    request.approverTag = 'WebUI Admin';
+    request.decidedAt = new Date().toISOString();
+    const { saveRequests } = require('./utils/roleRequestManager');
+    saveRequests(requests);
+
+    // Update the approval message if it exists
+    if (request.approvalMessageId && request.approvalChannelId) {
+      try {
+        const ch = await client.channels.fetch(request.approvalChannelId);
+        const msg = await ch.messages.fetch(request.approvalMessageId);
+        const embed = baseEmbed()
+          .setTitle(`✅ Запрос одобрен — ${request.factionEmoji} ${request.factionTitle}`)
+          .setDescription(`**Игрок:** <@${request.userId}>\n**Роль:** ${request.roleName}\n**Одобрено через:** WebUI`)
+          .setColor(0x22C55E);
+        await msg.edit({ embeds: [embed], components: [] });
+      } catch {}
+    }
+
+    res.json({ ok: true, message: `Роль ${request.roleName} выдана` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/role-requests/:id/deny', async (req, res) => {
+  try {
+    const requests = loadFactionRoleRequests();
+    const request = requests.find(r => r.id === req.params.id);
+    if (!request) return res.status(404).json({ error: 'Запрос не найден' });
+    if (request.status !== 'pending') return res.status(400).json({ error: 'Запрос уже рассмотрен' });
+
+    request.status = 'denied';
+    request.approvedBy = 'webui';
+    request.approverTag = 'WebUI Admin';
+    request.decidedAt = new Date().toISOString();
+    const { saveRequests } = require('./utils/roleRequestManager');
+    saveRequests(requests);
+
+    // Update the approval message
+    if (request.approvalMessageId && request.approvalChannelId) {
+      try {
+        const ch = await client.channels.fetch(request.approvalChannelId);
+        const msg = await ch.messages.fetch(request.approvalMessageId);
+        const embed = baseEmbed()
+          .setTitle(`❌ Запрос отклонён — ${request.factionEmoji} ${request.factionTitle}`)
+          .setDescription(`**Игрок:** <@${request.userId}>\n**Роль:** ${request.roleName}\n**Отклонено через:** WebUI`)
+          .setColor(0xEF4444);
+        await msg.edit({ embeds: [embed], components: [] });
+      } catch {}
+    }
+
+    res.json({ ok: true, message: 'Запрос отклонён' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/role-request-panel', async (req, res) => {
+  try {
+    const guildId = process.env.GUILD_ID;
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) return res.status(500).json({ error: 'Guild not found' });
+    await guild.channels.fetch();
+    const result = await postRequestPanel(guild);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/structure/deploy', async (req, res) => {
+  const { deployStructure } = require('./utils/factionManager');
+  const guildId = process.env.GUILD_ID;
+  if (!guildId) return res.status(500).json({ error: 'GUILD_ID is not set' });
+  
+  const guild = client.guilds.cache.get(guildId);
+  if (!guild) return res.status(500).json({ error: 'Bot is not in the configured guild' });
+
+  deployStructure(guild);
+  res.json({ message: 'Deployment background task started' });
+});
+
+app.get('/api/auto-roles', async (req, res) => {
+  try {
+    const autoRoles = typeof loadAutoRoles === 'function' ? loadAutoRoles() : {};
+    res.json({ autoRoles: autoRoles || {} });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// API: Save auto-roles config (JSON)
+app.post('/api/auto-roles', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const current = loadAutoRoles();
+    const cfg = {
+      enabled: body.enabled !== undefined ? !!body.enabled : current.enabled,
+      botEnabled: body.botEnabled !== undefined ? !!body.botEnabled : current.botEnabled,
+      autoRoles: Array.isArray(body.autoRoles) ? body.autoRoles.filter(id => typeof id === 'string') : current.autoRoles,
+      botRoles: Array.isArray(body.botRoles) ? body.botRoles.filter(id => typeof id === 'string') : current.botRoles,
+      inviteRoles: Array.isArray(body.inviteRoles) ? body.inviteRoles : current.inviteRoles
+    };
+    saveAutoRoles(cfg);
+    res.json({ ok: true, autoRoles: cfg });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// API: List all guild roles (for role pickers)
+app.get('/api/roles', async (req, res) => {
+  try {
+    const guildId = process.env.GUILD_ID;
+    if (!guildId) return res.status(500).json({ error: 'GUILD_ID is not set' });
+    const guild = await client.guilds.fetch(guildId);
+    await guild.roles.fetch();
+    const roles = guild.roles.cache
+      .filter(r => r.name !== '@everyone')
+      .sort((a, b) => b.position - a.position)
+      .map(r => ({
+        id: r.id,
+        name: r.name,
+        color: r.hexColor,
+        position: r.position,
+        managed: r.managed,
+        memberCount: r.members.size
+      }));
+    res.json({ roles });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// API: Live server structure (categories → channels + roles)
+app.get('/api/structure/live', async (req, res) => {
+  try {
+    const guildId = process.env.GUILD_ID;
+    if (!guildId) return res.status(500).json({ error: 'GUILD_ID is not set' });
+    const guild = await client.guilds.fetch(guildId);
+    await guild.channels.fetch();
+    await guild.roles.fetch();
+
+    // Categories with their children
+    const categories = guild.channels.cache
+      .filter(ch => ch.type === ChannelType.GuildCategory)
+      .sort((a, b) => a.rawPosition - b.rawPosition)
+      .map(cat => ({
+        id: cat.id,
+        name: cat.name,
+        position: cat.rawPosition,
+        channels: guild.channels.cache
+          .filter(ch => ch.parentId === cat.id)
+          .sort((a, b) => a.rawPosition - b.rawPosition)
+          .map(ch => ({
+            id: ch.id,
+            name: ch.name,
+            type: ch.type,
+            typeName: ch.type === 0 ? 'text' : ch.type === 2 ? 'voice' : ch.type === 5 ? 'announcement' : String(ch.type)
+          }))
+      }));
+
+    // roles grouped
+    const roles = guild.roles.cache
+      .filter(r => r.name !== '@everyone')
+      .sort((a, b) => b.position - a.position)
+      .map(r => ({ id: r.id, name: r.name, color: r.hexColor, position: r.position }));
+
+    res.json({ guildName: guild.name, guildId: guild.id, categories, roles });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// API: Edit an existing bot message (embed) by channel+message ID
+app.post('/api/edit-embed', async (req, res) => {
+  try {
+    const { channelId, messageId, title, description, color, fields } = req.body || {};
+    if (!channelId || !messageId) return res.status(400).json({ ok: false, message: 'channelId и messageId обязательны' });
+
+    const channel = await client.channels.fetch(channelId);
+    if (!channel) return res.status(404).json({ ok: false, message: 'Канал не найден' });
+
+    const message = await channel.messages.fetch(messageId);
+    if (!message) return res.status(404).json({ ok: false, message: 'Сообщение не найдено' });
+    if (message.author.id !== client.user.id) {
+      return res.status(400).json({ ok: false, message: 'Бот может редактировать только свои сообщения' });
+    }
+
+    const embed = baseEmbed();
+    if (title) embed.setTitle(title.slice(0, 256));
+    if (description) embed.setDescription(description.slice(0, 4096));
+    if (color && /^#?[0-9a-fA-F]{6}$/.test(color)) {
+      embed.setColor(parseInt(color.replace('#', ''), 16));
+    }
+    if (fields && Array.isArray(fields)) {
+      for (const f of fields.slice(0, 25)) {
+        embed.addFields({ name: (f.name || '\u200b').slice(0, 256), value: (f.value || '\u200b').slice(0, 1024), inline: !!f.inline });
+      }
+    }
+
+    await message.edit({ embeds: [embed] });
+    res.json({ ok: true, messageId: message.id, channelName: channel.name });
+  } catch (err) {
+    console.error('Error in /api/edit-embed:', err);
+    if (err.code === 50001) return res.status(403).json({ ok: false, message: 'Бот не имеет доступа к каналу' });
+    if (err.code === 10008) return res.status(404).json({ ok: false, message: 'Сообщение не найдено' });
+    res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
+app.get('/api/logs', async (req, res) => {
+    // we'll pull recent events from memory or a mock
+    res.json({
+        logs: [
+            { time: new Date().toLocaleTimeString(), msg: "Bot connected to Discord API", brand: "text-emerald-400" },
+            { time: "10:42 AM", msg: "Presence updated to " + (typeof CURRENT_BOT_PRESENCE !== 'undefined' ? CURRENT_BOT_PRESENCE : 'Online'), brand: "text-blue-400" }
+        ]
+    });
+});
 
 app.get('/', async (req, res) => {
   const bodyHtml = `

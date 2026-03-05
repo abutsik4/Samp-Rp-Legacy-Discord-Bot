@@ -1,0 +1,28 @@
+[Unit]
+Description=SRP Legacy Next.js Web UI
+Wants=network-online.target
+After=network-online.target srp-legacy-bot.service
+
+[Service]
+Type=simple
+User=jepsen
+WorkingDirectory=/opt/SRP_Legacy_Discord_Bot/webui
+
+EnvironmentFile=/opt/SRP_Legacy_Discord_Bot/.env
+EnvironmentFile=/opt/SRP_Legacy_Discord_Bot/webui/.env.local
+
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
+Environment="NODE_ENV=production"
+Environment="PORT=3002"
+
+ExecStart=/usr/bin/npm run start -- -p 3002
+
+Restart=always
+RestartSec=10
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=srp-legacy-webui
+
+[Install]
+WantedBy=multi-user.target
