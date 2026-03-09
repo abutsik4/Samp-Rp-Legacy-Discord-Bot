@@ -8,22 +8,193 @@ const { ChannelType, PermissionsBitField } = require('discord.js');
 const P = PermissionsBitField.Flags;
 
 const FACTIONS = [
-  { tag: 'MAYOR',   emoji: '🏛️',  title: 'Мэрия',        color: '#F1C40F' },
-  { tag: 'FBI',     emoji: '🕵️',   title: 'ФБР',          color: '#2C3E50' },
-  { tag: 'LSPD',    emoji: '🚓',   title: 'ЛСПД',         color: '#3498DB' },
-  { tag: 'SFPD',    emoji: '🚓',   title: 'СФПД',         color: '#2980B9' },
-  { tag: 'LVPD',    emoji: '🚓',   title: 'ЛВПД',         color: '#1ABC9C' },
-  { tag: 'ARMY-LV', emoji: '🪖',   title: 'Армия ЛВ',     color: '#27AE60' },
-  { tag: 'ARMY-SF', emoji: '🪖',   title: 'Армия СФ',     color: '#229954' },
-  { tag: 'MOH',     emoji: '🚑',   title: 'Минздрав',     color: '#E74C3C' },
-  { tag: 'INST',    emoji: '🏫',   title: 'Инструкторы',  color: '#9B59B6' },
-  { tag: 'COURT',   emoji: '⚖️',   title: 'Суд',          color: '#E67E22' }
+  { tag: 'MAYOR',   emoji: '🏛️',  title: 'Мэрия',        color: '#F1C40F',
+    textChannels: [
+      { name: '📌│объявления',       perm: 'announce' },
+      { name: '💬│общий-чат',        perm: 'chat' },
+      { name: '🤝│обсуждения',       perm: 'chat' },
+      { name: '🗑️│управление-ролями', perm: 'manage' },
+    ],
+    voiceChannels: [
+      { name: '🔊 Совещание', perm: 'vLeader' },
+      { name: '🎙️ Рабочая',  perm: 'vLeader' },
+      { name: '🤝 Голос 1×1', perm: 'vAll', userLimit: 2 },
+      { name: '👥 Голос 2×2', perm: 'vAll', userLimit: 4 },
+    ]
+  },
+  { tag: 'FBI',     emoji: '🕵️',   title: 'ФБР',          color: '#2C3E50',
+    textChannels: [
+      { name: '📌│объявления',       perm: 'announce' },
+      { name: '💬│оперативка',       perm: 'chat' },
+      { name: '💬│общий-чат',        perm: 'chat' },
+      { name: '👥│обсуждения',       perm: 'chat' },
+      { name: '🗑️│управление-ролями', perm: 'manage' },
+    ],
+    voiceChannels: [
+      { name: '🔊 Брифинг',   perm: 'vLeader' },
+      { name: '🎙️ Оперштаб',  perm: 'vLeader' },
+      { name: '🔊 Совещание',  perm: 'vLeader' },
+      { name: '🎙️ Рабочая',   perm: 'vLeader' },
+      { name: '🤝 Голос 1×1',  perm: 'vAll', userLimit: 2 },
+      { name: '👥 Голос 2×2',  perm: 'vAll', userLimit: 4 },
+    ]
+  },
+  { tag: 'LSPD',    emoji: '🚓',   title: 'ЛСПД',         color: '#3498DB',
+    textChannels: [
+      { name: '📌│объявления',       perm: 'announce' },
+      { name: '💬│департамент',      perm: 'chat' },
+      { name: '💬│общий-чат',        perm: 'chat' },
+      { name: '🤝│обсуждения',       perm: 'chat' },
+      { name: '🗑️│управление-ролями', perm: 'manage' },
+    ],
+    voiceChannels: [
+      { name: '🔊 Брифинг',   perm: 'vLeader' },
+      { name: '🚓 Патруль',   perm: 'vAll' },
+      { name: '🔊 Совещание',  perm: 'vLeader' },
+      { name: '🎙️ Рабочая',   perm: 'vLeader' },
+      { name: '🤝 Голос 1×1',  perm: 'vAll', userLimit: 2 },
+      { name: '👥 Голос 2×2',  perm: 'vAll', userLimit: 4 },
+    ]
+  },
+  { tag: 'SFPD',    emoji: '🚓',   title: 'СФПД',         color: '#2980B9',
+    textChannels: [
+      { name: '📌│объявления',       perm: 'announce' },
+      { name: '💬│департамент',      perm: 'chat' },
+      { name: '💬│общий-чат',        perm: 'chat' },
+      { name: '🤝│обсуждения',       perm: 'chat' },
+      { name: '🗑️│управление-ролями', perm: 'manage' },
+    ],
+    voiceChannels: [
+      { name: '🔊 Брифинг',   perm: 'vLeader' },
+      { name: '🚓 Патруль',   perm: 'vAll' },
+      { name: '🔊 Совещание',  perm: 'vLeader' },
+      { name: '🎙️ Рабочая',   perm: 'vLeader' },
+      { name: '🤝 Голос 1×1',  perm: 'vAll', userLimit: 2 },
+      { name: '👥 Голос 2×2',  perm: 'vAll', userLimit: 4 },
+    ]
+  },
+  { tag: 'LVPD',    emoji: '🚓',   title: 'ЛВПД',         color: '#1ABC9C',
+    textChannels: [
+      { name: '📌│объявления',       perm: 'announce' },
+      { name: '💬│департамент',      perm: 'chat' },
+      { name: '💬│общий-чат',        perm: 'chat' },
+      { name: '🤝│обсуждения',       perm: 'chat' },
+      { name: '🗑️│управление-ролями', perm: 'manage' },
+    ],
+    voiceChannels: [
+      { name: '🔊 Брифинг',   perm: 'vLeader' },
+      { name: '🚓 Патруль',   perm: 'vAll' },
+      { name: '🔊 Совещание',  perm: 'vLeader' },
+      { name: '🎙️ Рабочая',   perm: 'vLeader' },
+      { name: '🤝 Голос 1×1',  perm: 'vAll' },
+      { name: '👥 Голос 2×2',  perm: 'vAll' },
+    ]
+  },
+  { tag: 'ARMY-LV', emoji: '🪖',   title: 'Армия ЛВ',     color: '#27AE60',
+    textChannels: [
+      { name: '📌│объявления',       perm: 'announce' },
+      { name: '💬│казарма',          perm: 'chat' },
+      { name: '💬│общий-чат',        perm: 'chat' },
+      { name: '👥│обсуждения',       perm: 'chat' },
+      { name: '🗑️│управление-ролями', perm: 'manage' },
+    ],
+    voiceChannels: [
+      { name: '🔊 Брифинг',     perm: 'vLeader' },
+      { name: '🛡️ Дежурство',   perm: 'vAll' },
+      { name: '🔊 Совещание',    perm: 'vLeader' },
+      { name: '🎙️ Рабочая',     perm: 'vLeader' },
+      { name: '🤝 Голос 1×1',    perm: 'vAll', userLimit: 2 },
+      { name: '👥 Голос 2×2',    perm: 'vAll', userLimit: 4 },
+    ]
+  },
+  { tag: 'ARMY-SF', emoji: '🪖',   title: 'Армия СФ',     color: '#229954',
+    textChannels: [
+      { name: '📌│объявления',       perm: 'announce' },
+      { name: '💬│казарма',          perm: 'chat' },
+      { name: '💬│общий-чат',        perm: 'chat' },
+      { name: '🤝│обсуждения',       perm: 'chat' },
+      { name: '🗑️│управление-ролями', perm: 'manage' },
+    ],
+    voiceChannels: [
+      { name: '🔊 Брифинг',     perm: 'vLeader' },
+      { name: '🛡️ Дежурство',   perm: 'vAll' },
+      { name: '🔊 Совещание',    perm: 'vLeader' },
+      { name: '🎙️ Рабочая',     perm: 'vLeader' },
+      { name: '🤝 Голос 1×1',    perm: 'vAll', userLimit: 2 },
+      { name: '👥 Голос 2×2',    perm: 'vAll', userLimit: 4 },
+    ]
+  },
+  { tag: 'MOH',     emoji: '🚑',   title: 'Минздрав',     color: '#E74C3C',
+    textChannels: [
+      { name: '📌│объявления',       perm: 'announce' },
+      { name: '💬│ординаторская',    perm: 'chat' },
+      { name: '💬│общий-чат',        perm: 'chat' },
+      { name: '🤝│обсуждения',       perm: 'chat' },
+      { name: '🗑️│управление-ролями', perm: 'manage' },
+    ],
+    voiceChannels: [
+      { name: '🔊 Брифинг',     perm: 'vLeader' },
+      { name: '🚑 Дежурство',   perm: 'vAll' },
+      { name: '🔊 Совещание',    perm: 'vLeader' },
+      { name: '🎙️ Рабочая',     perm: 'vLeader' },
+      { name: '🤝 Голос 1×1',    perm: 'vAll', userLimit: 2 },
+      { name: '👥 Голос 2×2',    perm: 'vAll', userLimit: 4 },
+    ]
+  },
+  { tag: 'INST',    emoji: '🏫',   title: 'Инструкторы',  color: '#9B59B6',
+    textChannels: [
+      { name: '📌│объявления',       perm: 'announce' },
+      { name: '💬│учебный-центр',    perm: 'chat' },
+      { name: '💬│общий-чат',        perm: 'chat' },
+      { name: '🤝│обсуждения',       perm: 'chat' },
+      { name: '🗑️│управление-ролями', perm: 'manage' },
+    ],
+    voiceChannels: [
+      { name: '🔊 Брифинг',     perm: 'vLeader' },
+      { name: '📝 Экзамены',    perm: 'vAll' },
+      { name: '🔊 Совещание',    perm: 'vLeader' },
+      { name: '🎙️ Рабочая',     perm: 'vLeader' },
+      { name: '🤝 Голос 1×1',    perm: 'vAll' },
+      { name: '👥 Голос 2×2',    perm: 'vAll' },
+    ]
+  },
+  { tag: 'COURT',   emoji: '⚖️',   title: 'Суд',          color: '#E67E22',
+    textChannels: [
+      { name: '📌│объявления',       perm: 'announce' },
+      { name: '💬│канцелярия',       perm: 'chat' },
+      { name: '💬│общий-чат',        perm: 'chat' },
+      { name: '🤝│обсуждения',       perm: 'chat' },
+      { name: '🗑️│управление-ролями', perm: 'manage' },
+    ],
+    voiceChannels: [
+      { name: '🔊 Заседание',    perm: 'vLeader' },
+      { name: '🎙️ Кабинет',     perm: 'vLeader' },
+      { name: '🔊 Совещание',    perm: 'vLeader' },
+      { name: '🎙️ Рабочая',     perm: 'vLeader' },
+      { name: '🤝 Голос 1×1',    perm: 'vAll', userLimit: 2 },
+      { name: '👥 Голос 2×2',    perm: 'vAll', userLimit: 4 },
+    ]
+  }
 ];
 
 const GLOBAL_ROLES = [
-  { name: '🛠️ Владелец',         color: '#E74C3C' },
-  { name: '🛡️ Админ',            color: '#E91E63' },
-  { name: '🔨 Модератор',        color: '#9C27B0' },
+  // Администрация (hoisted — отображаются отдельно)
+  { name: '🛠️ Владелец',            color: '#E74C3C', hoist: true },
+  { name: '⭐ Гл. Администратор',  color: '#FF5722', hoist: true },
+  { name: '👑 Зам. Гл. Админа',     color: '#FF7043', hoist: true },
+  { name: '🛡️ Админ',               color: '#E91E63', hoist: true },
+  { name: '🔨 Модератор',           color: '#9C27B0', hoist: true },
+  // Кураторы организаций (hoisted — отображаются отдельно)
+  { name: '🏛️ Следящий за Mayor',   color: '#F1C40F', hoist: true },
+  { name: '🕵️ Следящий за FBI',     color: '#2C3E50', hoist: true },
+  { name: '🚓 Следящий за LSPD',    color: '#3498DB', hoist: true },
+  { name: '🚓 Следящий за SFPD',    color: '#2980B9', hoist: true },
+  { name: '🚓 Следящий за LVPD',    color: '#1ABC9C', hoist: true },
+  { name: '🪩 Следящий за Army',    color: '#27AE60', hoist: true },
+  { name: '🚑 Следящий за MOH',     color: '#E74C3C', hoist: true },
+  { name: '🏫 Следящий за Inst',    color: '#9B59B6', hoist: true },
+  { name: '⚖️ Следящий за Court',   color: '#E67E22', hoist: true },
+  // Общие роли
   { name: '✅ Верифицирован',     color: '#4CAF50' },
   { name: '❌ Не верифицирован',  color: '#757575' },
   { name: '🤖 Бот',              color: '#607D8B' }
@@ -33,19 +204,22 @@ let setupStatus = { active: false, progress: 0, total: 0, currentTask: 'Ожид
 const delay = ms => new Promise(res => setTimeout(res, ms));
 
 // ─── Утилиты ────────────────────────────────────────────────
-async function findOrCreateRole(guild, name, color, perms) {
+async function findOrCreateRole(guild, name, color, perms, opts = {}) {
     let role = guild.roles.cache.find(r => r.name === name);
     if (!role) {
         role = await guild.roles.create({
             name, color,
             permissions: perms || [],
+            hoist: opts.hoist || false,
             reason: 'SRP Legacy — авто-настройка'
         });
+    } else if (opts.hoist && !role.hoist) {
+        await role.setHoist(true, 'SRP Legacy — hoist update').catch(() => {});
     }
     return role;
 }
 
-async function findOrCreateChannel(guild, name, type, parentId, overwrites) {
+async function findOrCreateChannel(guild, name, type, parentId, overwrites, opts = {}) {
     let ch = guild.channels.cache.find(c =>
         c.name === name && c.type === type && (parentId ? c.parentId === parentId : true)
     );
@@ -54,10 +228,16 @@ async function findOrCreateChannel(guild, name, type, parentId, overwrites) {
             name, type,
             parent: parentId || undefined,
             permissionOverwrites: overwrites || [],
+            userLimit: opts.userLimit || undefined,
             reason: 'SRP Legacy — авто-настройка'
         });
-    } else if (overwrites && overwrites.length > 0) {
-        try { await ch.permissionOverwrites.set(overwrites); } catch (_) {}
+    } else {
+        if (overwrites && overwrites.length > 0) {
+            try { await ch.permissionOverwrites.set(overwrites); } catch (_) {}
+        }
+        if (opts.userLimit != null && ch.userLimit !== opts.userLimit) {
+            try { await ch.setUserLimit(opts.userLimit); } catch (_) {}
+        }
     }
     return ch;
 }
@@ -86,9 +266,11 @@ function step(msg) { setupStatus.currentTask = msg; setupStatus.progress++; }
 async function deployStructure(guild) {
     if (setupStatus.active) return false;
 
-    // Task count: 1(@everyone) + 6(global roles) + 4(start cat + 3 channels)
-    //   + 3(admin cat + 2 channels) + per-faction(3 roles + 1 cat + 4 text + 4 voice = 12)
-    const totalTasks = 1 + GLOBAL_ROLES.length + 4 + 3 + (FACTIONS.length * 12);
+    // Count tasks: 1(@everyone) + 6(global roles) + 4(start cat + 3 ch)
+    //   + 4(admin cat + 3 ch) + per-faction(3 roles + 1 cat + text + voice)
+    let factionTasks = 0;
+    for (const f of FACTIONS) factionTasks += 3 + 1 + f.textChannels.length + f.voiceChannels.length;
+    const totalTasks = 1 + GLOBAL_ROLES.length + 4 + 4 + factionTasks;
     setupStatus = { active: true, progress: 0, total: totalTasks, currentTask: 'Запуск...' };
 
     try {
@@ -103,7 +285,7 @@ async function deployStructure(guild) {
         const rc = {};
         for (const gr of GLOBAL_ROLES) {
             step(`🎭 Роль: ${gr.name}...`);
-            rc[gr.name] = await findOrCreateRole(guild, gr.name, gr.color);
+            rc[gr.name] = await findOrCreateRole(guild, gr.name, gr.color, [], { hoist: !!gr.hoist });
             await delay(350);
         }
 
@@ -111,8 +293,23 @@ async function deployStructure(guild) {
         const modRole   = rc['🔨 Модератор'];
         const verified  = rc['✅ Верифицирован'];
         const unverified = rc['❌ Не верифицирован'];
+        const headAdmin = rc['⭐ Гл. Администратор'];
+        const depHeadAdmin = rc['👑 Зам. Гл. Админа'];
 
-        // Задаём права Админу: двигать участников, кик, бан, мут, но НЕ управлять сервером
+        // Задаём права Гл. Администратору и Зам. Гл. Админа (полные админ-права)
+        const fullAdminPerms = [
+            P.ViewChannel, P.SendMessages, P.ReadMessageHistory,
+            P.ManageMessages, P.ManageNicknames,
+            P.KickMembers, P.BanMembers, P.MuteMembers, P.DeafenMembers,
+            P.MoveMembers, P.Connect, P.Speak, P.ModerateMembers,
+            P.AttachFiles, P.EmbedLinks, P.UseExternalEmojis, P.AddReactions
+        ];
+        try { await headAdmin.setPermissions(fullAdminPerms); } catch (_) {}
+        await delay(200);
+        try { await depHeadAdmin.setPermissions(fullAdminPerms); } catch (_) {}
+        await delay(200);
+
+        // Задаём права Админу
         try {
             await adminRole.setPermissions([
                 P.ViewChannel, P.SendMessages, P.ReadMessageHistory,
@@ -135,28 +332,25 @@ async function deployStructure(guild) {
         } catch (_) {}
         await delay(200);
 
-        // ═══ 3. СТАРТ — верификация + запрос ролей ═══
-        step('🚀 Категория: СТАРТ...');
-        const startCat = await findOrCreateCategory(guild, '🚀 СТАРТ', [
+        // ═══ 3. 📚 Основная Информация — верификация + запрос ролей ═══
+        step('📚 Категория: Основная Информация...');
+        const startCat = await findOrCreateCategory(guild, '📚 Основная Информация', [
             { id: everyone.id, allow: [P.ViewChannel, P.ReadMessageHistory] }
         ]);
         await delay(300);
 
-        // ── 📋│правила-верификации ──
         step('📋 Канал: правила верификации...');
         await findOrCreateChannel(guild, '📋│правила-верификации', ChannelType.GuildText, startCat.id, [
             { id: everyone.id, allow: [P.ViewChannel, P.ReadMessageHistory], deny: [P.SendMessages] }
         ]);
         await delay(300);
 
-        // ── ✅│верификация ──
         step('✅ Канал: верификация...');
         await findOrCreateChannel(guild, '✅│верификация', ChannelType.GuildText, startCat.id, [
-            { id: everyone.id, allow: [P.ViewChannel, P.ReadMessageHistory, P.SendMessages] },
+            { id: everyone.id, allow: [P.ViewChannel, P.ReadMessageHistory], deny: [P.SendMessages] },
         ]);
         await delay(300);
 
-        // ── 📩│запрос-роли ──
         step('📩 Канал: запрос роли...');
         await findOrCreateChannel(guild, '📩│запрос-роли', ChannelType.GuildText, startCat.id, [
             { id: everyone.id, allow: [P.ViewChannel, P.ReadMessageHistory, P.SendMessages] },
@@ -172,6 +366,14 @@ async function deployStructure(guild) {
         ]);
         await delay(300);
 
+        step('📢 Канал: объявления-админ...');
+        await findOrCreateChannel(guild, '📢│объявления-админ', ChannelType.GuildText, adminCat.id, [
+            { id: everyone.id, deny: [P.ViewChannel] },
+            { id: adminRole.id, allow: [P.ViewChannel, P.SendMessages, P.ManageMessages, P.ReadMessageHistory] },
+            { id: modRole.id, allow: [P.ViewChannel, P.ReadMessageHistory], deny: [P.SendMessages] }
+        ]);
+        await delay(300);
+
         step('📢 Канал: админ-чат...');
         await findOrCreateChannel(guild, '📢│админ-чат', ChannelType.GuildText, adminCat.id, [
             { id: everyone.id, deny: [P.ViewChannel] },
@@ -180,7 +382,15 @@ async function deployStructure(guild) {
         ]);
         await delay(300);
 
-        step('🔊 Голос: админ-совещание...');
+        step('📋 Канал: заявки-верификации...');
+        await findOrCreateChannel(guild, '📋│заявки-верификации', ChannelType.GuildText, adminCat.id, [
+            { id: everyone.id, deny: [P.ViewChannel] },
+            { id: adminRole.id, allow: [P.ViewChannel, P.SendMessages, P.ManageMessages, P.ReadMessageHistory] },
+            { id: modRole.id, allow: [P.ViewChannel, P.SendMessages, P.ReadMessageHistory] }
+        ]);
+        await delay(300);
+
+        step('�🔊 Голос: админ-совещание...');
         await findOrCreateChannel(guild, '🔊 Админ-совещание', ChannelType.GuildVoice, adminCat.id, [
             { id: everyone.id, deny: [P.ViewChannel] },
             { id: adminRole.id, allow: [P.ViewChannel, P.Connect, P.Speak, P.MoveMembers, P.MuteMembers] },
@@ -211,95 +421,82 @@ async function deployStructure(guild) {
             const catName = `${faction.emoji} ${faction.title}`;
             const catOW = [
                 { id: everyone.id, deny: [P.ViewChannel] },
-                { id: adminRole.id, allow: [P.ViewChannel, P.SendMessages, P.ManageMessages, P.MoveMembers, P.MuteMembers, P.Connect, P.Speak] },
-                { id: fR.leader.id, allow: [P.ViewChannel, P.ManageMessages, P.SendMessages, P.Connect, P.Speak, P.MuteMembers, P.MoveMembers] },
-                { id: fR.deputy.id, allow: [P.ViewChannel, P.ManageMessages, P.SendMessages, P.Connect, P.Speak, P.MuteMembers] },
-                { id: fR.member.id, allow: [P.ViewChannel, P.SendMessages, P.Connect, P.Speak] }
+                { id: adminRole.id, allow: [P.ViewChannel, P.SendMessages, P.ManageMessages, P.MoveMembers, P.MuteMembers, P.Connect, P.Speak, P.ReadMessageHistory] },
+                { id: modRole.id, allow: [P.ViewChannel, P.SendMessages, P.ReadMessageHistory, P.Connect, P.Speak] },
+                { id: fR.leader.id, allow: [P.ViewChannel, P.ManageMessages, P.SendMessages, P.Connect, P.Speak, P.MuteMembers, P.MoveMembers, P.ReadMessageHistory] },
+                { id: fR.deputy.id, allow: [P.ViewChannel, P.ManageMessages, P.SendMessages, P.Connect, P.Speak, P.MuteMembers, P.ReadMessageHistory] },
+                { id: fR.member.id, allow: [P.ViewChannel, P.SendMessages, P.Connect, P.Speak, P.ReadMessageHistory] }
             ];
             const cat = await findOrCreateCategory(guild, catName, catOW);
             await delay(350);
 
-            // ── Текстовые каналы ──
-            // 1. Объявления (только лидер/зам пишут, участники читают)
-            step(`  📌 ${faction.title} — объявления...`);
-            await findOrCreateChannel(guild, '📌│объявления', ChannelType.GuildText, cat.id, [
-                { id: everyone.id, deny: [P.ViewChannel] },
-                { id: fR.leader.id, allow: [P.ViewChannel, P.SendMessages, P.ManageMessages] },
-                { id: fR.deputy.id, allow: [P.ViewChannel, P.SendMessages, P.ManageMessages] },
-                { id: fR.member.id, allow: [P.ViewChannel, P.ReadMessageHistory], deny: [P.SendMessages] }
-            ]);
-            await delay(300);
+            // ── Текстовые каналы (per-faction definitions) ──
+            for (const chDef of faction.textChannels) {
+                step(`  📝 ${faction.title} — ${chDef.name}...`);
+                let overwrites;
+                if (chDef.perm === 'announce') {
+                    // Leader/deputy write, members read-only
+                    overwrites = [
+                        { id: everyone.id, deny: [P.ViewChannel] },
+                        { id: adminRole.id, allow: [P.ViewChannel, P.SendMessages, P.ManageMessages, P.ReadMessageHistory] },
+                        { id: modRole.id, allow: [P.ViewChannel, P.SendMessages, P.ReadMessageHistory] },
+                        { id: fR.leader.id, allow: [P.ViewChannel, P.SendMessages, P.ManageMessages] },
+                        { id: fR.deputy.id, allow: [P.ViewChannel, P.SendMessages, P.ManageMessages] },
+                        { id: fR.member.id, allow: [P.ViewChannel, P.ReadMessageHistory], deny: [P.SendMessages] }
+                    ];
+                } else if (chDef.perm === 'manage') {
+                    // Leader/deputy/admin/mod only — members cannot see
+                    overwrites = [
+                        { id: everyone.id, deny: [P.ViewChannel] },
+                        { id: adminRole.id, allow: [P.ViewChannel, P.SendMessages, P.ManageMessages, P.ReadMessageHistory] },
+                        { id: modRole.id, allow: [P.ViewChannel, P.SendMessages, P.ReadMessageHistory] },
+                        { id: fR.leader.id, allow: [P.ViewChannel, P.SendMessages, P.ReadMessageHistory] },
+                        { id: fR.deputy.id, allow: [P.ViewChannel, P.SendMessages, P.ReadMessageHistory] },
+                        // fR.member intentionally NOT included
+                    ];
+                } else {
+                    // 'chat' — all faction members can see and write
+                    overwrites = [
+                        { id: everyone.id, deny: [P.ViewChannel] },
+                        { id: adminRole.id, allow: [P.ViewChannel, P.SendMessages, P.ManageMessages, P.ReadMessageHistory] },
+                        { id: modRole.id, allow: [P.ViewChannel, P.SendMessages, P.ReadMessageHistory] },
+                        { id: fR.leader.id, allow: [P.ViewChannel, P.SendMessages, P.ManageMessages] },
+                        { id: fR.deputy.id, allow: [P.ViewChannel, P.SendMessages, P.ManageMessages] },
+                        { id: fR.member.id, allow: [P.ViewChannel, P.SendMessages] }
+                    ];
+                }
+                await findOrCreateChannel(guild, chDef.name, ChannelType.GuildText, cat.id, overwrites);
+                await delay(300);
+            }
 
-            // 2. Общий чат — все участники
-            step(`  💬 ${faction.title} — общий чат...`);
-            await findOrCreateChannel(guild, '💬│общий-чат', ChannelType.GuildText, cat.id, [
-                { id: everyone.id, deny: [P.ViewChannel] },
-                { id: fR.leader.id, allow: [P.ViewChannel, P.SendMessages, P.ManageMessages] },
-                { id: fR.deputy.id, allow: [P.ViewChannel, P.SendMessages, P.ManageMessages] },
-                { id: fR.member.id, allow: [P.ViewChannel, P.SendMessages] }
-            ]);
-            await delay(300);
-
-            // 3. Обсуждения (1 на 1 / личные переговоры)
-            step(`  🤝 ${faction.title} — обсуждения 1×1...`);
-            await findOrCreateChannel(guild, '🤝│обсуждения-1на1', ChannelType.GuildText, cat.id, [
-                { id: everyone.id, deny: [P.ViewChannel] },
-                { id: fR.leader.id, allow: [P.ViewChannel, P.SendMessages, P.ManageMessages] },
-                { id: fR.deputy.id, allow: [P.ViewChannel, P.SendMessages, P.ManageMessages] },
-                { id: fR.member.id, allow: [P.ViewChannel, P.SendMessages] }
-            ]);
-            await delay(300);
-
-            // 4. Обсуждения (2 на 2 / групповые)
-            step(`  👥 ${faction.title} — обсуждения 2×2...`);
-            await findOrCreateChannel(guild, '👥│обсуждения-2на2', ChannelType.GuildText, cat.id, [
-                { id: everyone.id, deny: [P.ViewChannel] },
-                { id: fR.leader.id, allow: [P.ViewChannel, P.SendMessages, P.ManageMessages] },
-                { id: fR.deputy.id, allow: [P.ViewChannel, P.SendMessages, P.ManageMessages] },
-                { id: fR.member.id, allow: [P.ViewChannel, P.SendMessages] }
-            ]);
-            await delay(300);
-
-            // ── Голосовые каналы ──
-            // 1. Брифинг / Совещание
-            step(`  🔊 ${faction.title} — голос: совещание...`);
-            await findOrCreateChannel(guild, '🔊 Совещание', ChannelType.GuildVoice, cat.id, [
-                { id: everyone.id, deny: [P.ViewChannel] },
-                { id: fR.leader.id, allow: [P.ViewChannel, P.Connect, P.Speak, P.MuteMembers, P.MoveMembers] },
-                { id: fR.deputy.id, allow: [P.ViewChannel, P.Connect, P.Speak, P.MuteMembers] },
-                { id: fR.member.id, allow: [P.ViewChannel, P.Connect, P.Speak] }
-            ]);
-            await delay(300);
-
-            // 2. Рабочая комната
-            step(`  🎙️ ${faction.title} — голос: рабочая...`);
-            await findOrCreateChannel(guild, '🎙️ Рабочая', ChannelType.GuildVoice, cat.id, [
-                { id: everyone.id, deny: [P.ViewChannel] },
-                { id: fR.leader.id, allow: [P.ViewChannel, P.Connect, P.Speak, P.MuteMembers, P.MoveMembers] },
-                { id: fR.deputy.id, allow: [P.ViewChannel, P.Connect, P.Speak, P.MuteMembers] },
-                { id: fR.member.id, allow: [P.ViewChannel, P.Connect, P.Speak] }
-            ]);
-            await delay(300);
-
-            // 3. 1×1 голос
-            step(`  🤝 ${faction.title} — голос: 1 на 1...`);
-            await findOrCreateChannel(guild, '🤝 Голос 1×1', ChannelType.GuildVoice, cat.id, [
-                { id: everyone.id, deny: [P.ViewChannel] },
-                { id: fR.leader.id, allow: [P.ViewChannel, P.Connect, P.Speak, P.MoveMembers] },
-                { id: fR.deputy.id, allow: [P.ViewChannel, P.Connect, P.Speak] },
-                { id: fR.member.id, allow: [P.ViewChannel, P.Connect, P.Speak] }
-            ]);
-            await delay(300);
-
-            // 4. 2×2 голос
-            step(`  👥 ${faction.title} — голос: 2 на 2...`);
-            await findOrCreateChannel(guild, '👥 Голос 2×2', ChannelType.GuildVoice, cat.id, [
-                { id: everyone.id, deny: [P.ViewChannel] },
-                { id: fR.leader.id, allow: [P.ViewChannel, P.Connect, P.Speak, P.MoveMembers] },
-                { id: fR.deputy.id, allow: [P.ViewChannel, P.Connect, P.Speak] },
-                { id: fR.member.id, allow: [P.ViewChannel, P.Connect, P.Speak] }
-            ]);
-            await delay(300);
+            // ── Голосовые каналы (per-faction definitions) ──
+            for (const vDef of faction.voiceChannels) {
+                step(`  🔊 ${faction.title} — ${vDef.name}...`);
+                let overwrites;
+                if (vDef.perm === 'vLeader') {
+                    // Leader/deputy get mute/move
+                    overwrites = [
+                        { id: everyone.id, deny: [P.ViewChannel] },
+                        { id: adminRole.id, allow: [P.ViewChannel, P.Connect, P.Speak, P.MuteMembers, P.MoveMembers] },
+                        { id: modRole.id, allow: [P.ViewChannel, P.Connect, P.Speak] },
+                        { id: fR.leader.id, allow: [P.ViewChannel, P.Connect, P.Speak, P.MuteMembers, P.MoveMembers] },
+                        { id: fR.deputy.id, allow: [P.ViewChannel, P.Connect, P.Speak, P.MuteMembers] },
+                        { id: fR.member.id, allow: [P.ViewChannel, P.Connect, P.Speak] }
+                    ];
+                } else {
+                    // 'vAll' — everyone equal
+                    overwrites = [
+                        { id: everyone.id, deny: [P.ViewChannel] },
+                        { id: adminRole.id, allow: [P.ViewChannel, P.Connect, P.Speak, P.MoveMembers] },
+                        { id: modRole.id, allow: [P.ViewChannel, P.Connect, P.Speak] },
+                        { id: fR.leader.id, allow: [P.ViewChannel, P.Connect, P.Speak, P.MoveMembers] },
+                        { id: fR.deputy.id, allow: [P.ViewChannel, P.Connect, P.Speak] },
+                        { id: fR.member.id, allow: [P.ViewChannel, P.Connect, P.Speak] }
+                    ];
+                }
+                await findOrCreateChannel(guild, vDef.name, ChannelType.GuildVoice, cat.id, overwrites, { userLimit: vDef.userLimit || 0 });
+                await delay(300);
+            }
         }
 
         setupStatus.currentTask = '✅ Развёртывание завершено успешно!';

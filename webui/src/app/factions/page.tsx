@@ -99,7 +99,7 @@ export default function FactionsPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
 
           <div className="p-4 bg-white/5 rounded-xl border border-white/10">
-            <h3 className="font-bold text-emerald-400 mb-2">🚀 СТАРТ</h3>
+            <h3 className="font-bold text-emerald-400 mb-2">� Основная Информация</h3>
             <ul className="text-zinc-300 space-y-1">
               <li>📋│правила-верификации</li>
               <li>✅│верификация</li>
@@ -120,13 +120,13 @@ export default function FactionsPage() {
             <h3 className="font-bold text-indigo-400 mb-2">🏢 Каждая организация</h3>
             <ul className="text-zinc-300 space-y-1">
               <li>📌│объявления (только лидерство)</li>
+              <li>💬│спец. канал (департамент / казарма / ...)</li>
               <li>💬│общий-чат</li>
-              <li>🤝│обсуждения-1на1</li>
-              <li>👥│обсуждения-2на2</li>
-              <li className="border-t border-white/10 mt-1 pt-1">🔊 Совещание</li>
-              <li>🎙️ Рабочая</li>
-              <li>🤝 Голос 1×1</li>
-              <li>👥 Голос 2×2</li>
+              <li>🤝│обсуждения</li>
+              <li>🗑️│управление-ролями (админы/лидеры)</li>
+              <li className="border-t border-white/10 mt-1 pt-1">🔊 Брифинг / Заседание</li>
+              <li>🔊 Совещание + 🎙️ Рабочая</li>
+              <li>🤝 Голос 1×1 + 👥 Голос 2×2</li>
             </ul>
           </div>
 
@@ -156,7 +156,7 @@ export default function FactionsPage() {
             <h3 className="font-bold text-red-400 text-sm mb-2">❌ Не верифицирован — что это значит?</h3>
             <ul className="text-zinc-400 text-sm space-y-1.5 list-disc list-inside">
               <li>Вы только зашли на сервер</li>
-              <li>Видите только каналы 🚀 СТАРТ</li>
+              <li>Видите только каналы � Основная Информация</li>
               <li>Не имеете доступа к организациям</li>
               <li>Не можете запрашивать роли</li>
             </ul>

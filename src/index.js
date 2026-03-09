@@ -18,9 +18,22 @@ const { sendTelegram } = require('./utils/telegram');
 const {
   handleInteraction: handleRoleRequestInteraction,
   postRequestPanel,
+  postRemovalPanel,
   loadRequests: loadFactionRoleRequests,
-  FACTIONS: ROLE_REQUEST_FACTIONS
+  FACTIONS: ROLE_REQUEST_FACTIONS,
+  ROLE_TYPES,
+  canRemoveRole,
+  getRemovableRoleTypes,
+  roleNameForType
 } = require('./utils/roleRequestManager');
+const {
+  handleInteraction: handleVerificationInteraction,
+  postVerificationPanel,
+  postPendingPanel,
+  postRulesEmbed,
+  findVerificationRequestsChannel
+} = require('./utils/verificationManager');
+const { postAdminGuide } = require('./utils/adminGuide');
 const {
   PACK_CHOICES,
   getGuildConfig,
@@ -701,7 +714,6 @@ async function warnThrottled(key, text, minIntervalMs) {
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    ,
     GatewayIntentBits.GuildInvites,
     GatewayIntentBits.GuildMessages,
     
@@ -909,8 +921,25 @@ client.on(Events.MessageCreate, async message => {
   }
 });
 
-// ── Interaction handler (buttons, select menus) ──
+// ── Interaction handler (buttons, select menus, modals) ──
+const VERIFICATION_IDS = ['verification_start', 'verification_form', 'verify_approve_', 'verify_deny_', 'verify_pending_'];
 client.on(Events.InteractionCreate, async interaction => {
+  const cid = interaction.customId || '';
+  const isVerification = VERIFICATION_IDS.some(prefix => cid.startsWith(prefix));
+
+  if (isVerification) {
+    try {
+      await handleVerificationInteraction(interaction);
+    } catch (err) {
+      console.error('[INTERACTION] Verification handler error:', err);
+      try {
+        if (!interaction.replied && !interaction.deferred)
+          await interaction.reply({ content: '❌ Произошла ошибка. Попробуйте позже.', ephemeral: true });
+      } catch {}
+    }
+    return;
+  }
+
   try {
     await handleRoleRequestInteraction(interaction);
   } catch (err) {
@@ -2020,6 +2049,223 @@ app.post('/api/role-request-panel', async (req, res) => {
   }
 });
 
+// ── Post removal panel(s) in faction management channels ──
+app.post('/api/removal-panel', async (req, res) => {
+  try {
+    const guildId = process.env.GUILD_ID;
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) return res.status(500).json({ error: 'Guild not found' });
+    await guild.channels.fetch();
+    await guild.roles.fetch();
+
+    const { factionTag } = req.body || {};
+    const results = [];
+
+    if (factionTag) {
+      // Single faction
+      const result = await postRemovalPanel(guild, factionTag);
+      results.push({ factionTag, ...result });
+    } else {
+      // All factions
+      for (const f of ROLE_REQUEST_FACTIONS) {
+        try {
+          const result = await postRemovalPanel(guild, f.tag);
+          results.push({ factionTag: f.tag, ...result });
+        } catch (err) {
+          results.push({ factionTag: f.tag, error: err.message });
+        }
+      }
+    }
+
+    res.json({ ok: true, results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Post verification panel in ✅│верификация ──
+app.post('/api/verification-panel', async (req, res) => {
+  try {
+    const guildId = process.env.GUILD_ID;
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) return res.status(500).json({ error: 'Guild not found' });
+    await guild.channels.fetch();
+    const result = await postVerificationPanel(guild);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Post rules embed in 📋│правила-верификации ──
+app.post('/api/rules-panel', async (req, res) => {
+  try {
+    const guildId = process.env.GUILD_ID;
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) return res.status(500).json({ error: 'Guild not found' });
+    await guild.channels.fetch();
+    const result = await postRulesEmbed(guild);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Post pending-requests admin panel in 📋│заявки-верификации ──
+app.post('/api/pending-panel', async (req, res) => {
+  try {
+    const guildId = process.env.GUILD_ID;
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) return res.status(500).json({ error: 'Guild not found' });
+    await guild.channels.fetch();
+    const result = await postPendingPanel(guild);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin-guide', async (req, res) => {
+  try {
+    const guildId = process.env.GUILD_ID;
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) return res.status(500).json({ error: 'Guild not found' });
+    await guild.channels.fetch();
+    const result = await postAdminGuide(guild);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── List faction members (for role removal UI) ──
+// Uses Discord REST API directly so GuildMembers gateway intent is not required in code.
+// NOTE: "Server Members Intent" must be enabled in Discord Developer Portal.
+app.get('/api/faction-members', async (req, res) => {
+  try {
+    const { factionTag } = req.query;
+    if (!factionTag) return res.status(400).json({ ok: false, message: 'factionTag required' });
+
+    const guildId = process.env.GUILD_ID;
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) return res.status(500).json({ ok: false, message: 'Guild not found' });
+
+    await guild.roles.fetch();
+
+    // Build a set of role IDs we care about
+    const roleInfoMap = new Map(); // roleId -> { roleName, roleType, roleEmoji, roleLabel }
+    for (const rt of ROLE_TYPES) {
+      const roleName = rt.format(factionTag);
+      const role = guild.roles.cache.find(r => r.name === roleName);
+      if (!role) continue;
+      roleInfoMap.set(role.id, {
+        roleId: role.id,
+        roleName: role.name,
+        roleType: rt.key,
+        roleEmoji: rt.emoji,
+        roleLabel: rt.label
+      });
+    }
+
+    if (roleInfoMap.size === 0) {
+      return res.json({ ok: true, members: [], total: 0 });
+    }
+
+    // Fetch guild members via Discord REST API (requires Server Members Intent in Developer Portal)
+    const botToken = process.env.DISCORD_BOT_TOKEN || client.token;
+    let allMembers = [];
+    let after = '0';
+    const MAX_PAGES = 10; // safety limit
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const apiUrl = `https://discord.com/api/v10/guilds/${guildId}/members?limit=1000&after=${after}`;
+      const resp = await fetch(apiUrl, {
+        headers: { Authorization: `Bot ${botToken}` }
+      });
+      if (!resp.ok) {
+        const errBody = await resp.text();
+        console.error(`Discord REST /members error ${resp.status}:`, errBody);
+        return res.status(502).json({
+          ok: false,
+          message: 'Не удалось получить список участников. Убедитесь, что "Server Members Intent" включён в Discord Developer Portal.',
+          detail: errBody
+        });
+      }
+      const batch = await resp.json();
+      if (!batch.length) break;
+      allMembers = allMembers.concat(batch);
+      if (batch.length < 1000) break;
+      after = batch[batch.length - 1].user.id;
+    }
+
+    // Filter members who have at least one of the faction roles
+    const membersMap = new Map();
+    for (const m of allMembers) {
+      const memberRoleIds = m.roles || [];
+      const matchedRoles = memberRoleIds.filter(rid => roleInfoMap.has(rid));
+      if (matchedRoles.length === 0) continue;
+
+      const nick = m.nick || m.user.global_name || m.user.username;
+      const avatarHash = m.user.avatar;
+      const avatarUrl = avatarHash
+        ? `https://cdn.discordapp.com/avatars/${m.user.id}/${avatarHash}.png?size=32`
+        : `https://cdn.discordapp.com/embed/avatars/${(parseInt(m.user.id) >> 22) % 6}.png`;
+
+      membersMap.set(m.user.id, {
+        userId: m.user.id,
+        userTag: m.user.username,
+        displayName: nick,
+        avatar: avatarUrl,
+        roles: matchedRoles.map(rid => roleInfoMap.get(rid))
+      });
+    }
+
+    const members = [...membersMap.values()];
+    members.sort((a, b) => {
+      const order = { leader: 0, deputy: 1, member: 2 };
+      const aTop = Math.min(...a.roles.map(r => order[r.roleType] ?? 3));
+      const bTop = Math.min(...b.roles.map(r => order[r.roleType] ?? 3));
+      return aTop - bTop || a.userTag.localeCompare(b.userTag);
+    });
+
+    res.json({ ok: true, members, total: members.length });
+  } catch (err) {
+    console.error('Error in /api/faction-members:', err);
+    res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
+// ── Remove a faction role from a user ──
+app.post('/api/faction-role-remove', async (req, res) => {
+  try {
+    const { userId, factionTag, roleType } = req.body;
+    if (!userId || !factionTag) return res.status(400).json({ ok: false, message: 'userId and factionTag required' });
+
+    const guildId = process.env.GUILD_ID;
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) return res.status(500).json({ ok: false, message: 'Guild not found' });
+
+    const rType = roleType || 'member';
+    const roleName = roleNameForType(factionTag, rType);
+    const role = guild.roles.cache.find(r => r.name === roleName);
+    if (!role) return res.status(404).json({ ok: false, message: `Роль ${roleName} не найдена` });
+
+    const member = await guild.members.fetch(userId);
+    if (!member) return res.status(404).json({ ok: false, message: 'Пользователь не найден' });
+
+    if (!member.roles.cache.has(role.id)) {
+      return res.status(400).json({ ok: false, message: `У пользователя нет роли ${roleName}` });
+    }
+
+    await member.roles.remove(role, 'Removed via WebUI by leader/admin');
+    console.log(`[ROLE-REQ] 🗑️ Removed ${roleName} from ${member.user.tag} (via WebUI)`);
+
+    res.json({ ok: true, message: `Роль ${roleName} снята с ${member.user.tag}` });
+  } catch (err) {
+    console.error('Error in /api/faction-role-remove:', err);
+    res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
 app.post('/api/structure/deploy', async (req, res) => {
   const { deployStructure } = require('./utils/factionManager');
   const guildId = process.env.GUILD_ID;
@@ -2158,6 +2404,225 @@ app.post('/api/edit-embed', async (req, res) => {
     if (err.code === 50001) return res.status(403).json({ ok: false, message: 'Бот не имеет доступа к каналу' });
     if (err.code === 10008) return res.status(404).json({ ok: false, message: 'Сообщение не найдено' });
     res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
+// ── Bot Messages API: list bot messages in a channel ──
+app.get('/api/bot-messages', async (req, res) => {
+  try {
+    const { channelId, limit } = req.query;
+    if (!channelId) return res.status(400).json({ error: 'channelId is required' });
+    const channel = await client.channels.fetch(channelId);
+    if (!channel) return res.status(404).json({ error: 'Channel not found' });
+    const messages = await channel.messages.fetch({ limit: Math.min(parseInt(limit) || 50, 100) });
+    const botMessages = messages
+      .filter(m => m.author.id === client.user.id)
+      .sort((a, b) => b.createdTimestamp - a.createdTimestamp)
+      .map(m => ({
+        id: m.id,
+        channelId: channel.id,
+        channelName: channel.name,
+        content: m.content || '',
+        embeds: m.embeds.map(e => ({
+          title: e.title || '',
+          description: e.description || '',
+          color: e.hexColor || '#5865F2',
+          fields: (e.fields || []).map(f => ({ name: f.name, value: f.value, inline: f.inline })),
+          footer: e.footer ? e.footer.text : '',
+          thumbnail: e.thumbnail ? e.thumbnail.url : '',
+          image: e.image ? e.image.url : '',
+        })),
+        components: m.components.length,
+        createdAt: m.createdAt.toISOString(),
+        editedAt: m.editedAt ? m.editedAt.toISOString() : null,
+      }));
+    res.json({ messages: botMessages, channelName: channel.name });
+  } catch (err) {
+    console.error('Error in /api/bot-messages:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Delete a bot message ──
+app.post('/api/delete-message', async (req, res) => {
+  try {
+    const { channelId, messageId } = req.body || {};
+    if (!channelId || !messageId) return res.status(400).json({ ok: false, message: 'channelId and messageId required' });
+    const channel = await client.channels.fetch(channelId);
+    if (!channel) return res.status(404).json({ ok: false, message: 'Channel not found' });
+    const message = await channel.messages.fetch(messageId);
+    if (!message) return res.status(404).json({ ok: false, message: 'Message not found' });
+    if (message.author.id !== client.user.id) return res.status(400).json({ ok: false, message: 'Can only delete bot messages' });
+    await message.delete();
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error in /api/delete-message:', err);
+    res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
+// ── Channel Management API ──
+app.post('/api/channels/create-category', async (req, res) => {
+  try {
+    const guildId = process.env.GUILD_ID;
+    const guild = await client.guilds.fetch(guildId);
+    const { name } = req.body || {};
+    if (!name) return res.status(400).json({ ok: false, message: 'name is required' });
+    const category = await guild.channels.create({ name, type: ChannelType.GuildCategory });
+    res.json({ ok: true, category: { id: category.id, name: category.name, position: category.rawPosition } });
+  } catch (err) {
+    console.error('Error creating category:', err);
+    res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
+app.post('/api/channels/create', async (req, res) => {
+  try {
+    const guildId = process.env.GUILD_ID;
+    const guild = await client.guilds.fetch(guildId);
+    const { name, parentId, type } = req.body || {};
+    if (!name) return res.status(400).json({ ok: false, message: 'name is required' });
+    const chType = type === 'voice' ? ChannelType.GuildVoice
+      : type === 'announcement' ? ChannelType.GuildAnnouncement
+      : ChannelType.GuildText;
+    const opts = { name, type: chType };
+    if (parentId) opts.parent = parentId;
+    const channel = await guild.channels.create(opts);
+    res.json({ ok: true, channel: { id: channel.id, name: channel.name, parentId: channel.parentId, type: channel.type } });
+  } catch (err) {
+    console.error('Error creating channel:', err);
+    res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
+app.post('/api/channels/delete', async (req, res) => {
+  try {
+    const { channelId } = req.body || {};
+    if (!channelId) return res.status(400).json({ ok: false, message: 'channelId is required' });
+    const channel = await client.channels.fetch(channelId);
+    if (!channel) return res.status(404).json({ ok: false, message: 'Channel not found' });
+    const name = channel.name;
+    await channel.delete();
+    res.json({ ok: true, name });
+  } catch (err) {
+    console.error('Error deleting channel:', err);
+    res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
+app.post('/api/channels/rename', async (req, res) => {
+  try {
+    const { channelId, name } = req.body || {};
+    if (!channelId || !name) return res.status(400).json({ ok: false, message: 'channelId and name required' });
+    const channel = await client.channels.fetch(channelId);
+    if (!channel) return res.status(404).json({ ok: false, message: 'Channel not found' });
+    await channel.setName(name);
+    res.json({ ok: true, channel: { id: channel.id, name: channel.name } });
+  } catch (err) {
+    console.error('Error renaming channel:', err);
+    res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
+app.post('/api/channels/move', async (req, res) => {
+  try {
+    const { channelId, parentId } = req.body || {};
+    if (!channelId) return res.status(400).json({ ok: false, message: 'channelId required' });
+    const channel = await client.channels.fetch(channelId);
+    if (!channel) return res.status(404).json({ ok: false, message: 'Channel not found' });
+    await channel.setParent(parentId || null);
+    res.json({ ok: true, channel: { id: channel.id, name: channel.name, parentId: channel.parentId } });
+  } catch (err) {
+    console.error('Error moving channel:', err);
+    res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
+// ── Role Management API ──
+app.post('/api/roles/create', async (req, res) => {
+  try {
+    const guildId = process.env.GUILD_ID;
+    const guild = await client.guilds.fetch(guildId);
+    const { name, color, permissions, hoist, mentionable } = req.body || {};
+    if (!name) return res.status(400).json({ ok: false, message: 'name is required' });
+    const opts = { name, reason: 'Created via WebUI' };
+    if (color && /^#?[0-9a-fA-F]{6}$/.test(color)) opts.color = parseInt(color.replace('#', ''), 16);
+    if (permissions) opts.permissions = BigInt(permissions);
+    if (hoist !== undefined) opts.hoist = !!hoist;
+    if (mentionable !== undefined) opts.mentionable = !!mentionable;
+    const role = await guild.roles.create(opts);
+    res.json({ ok: true, role: { id: role.id, name: role.name, color: role.hexColor, position: role.position } });
+  } catch (err) {
+    console.error('Error creating role:', err);
+    res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
+app.post('/api/roles/edit', async (req, res) => {
+  try {
+    const guildId = process.env.GUILD_ID;
+    const guild = await client.guilds.fetch(guildId);
+    await guild.roles.fetch();
+    const { roleId, name, color, permissions, hoist, mentionable } = req.body || {};
+    if (!roleId) return res.status(400).json({ ok: false, message: 'roleId is required' });
+    const role = guild.roles.cache.get(roleId);
+    if (!role) return res.status(404).json({ ok: false, message: 'Role not found' });
+    if (role.managed) return res.status(400).json({ ok: false, message: 'Cannot edit managed/integration role' });
+    const opts = { reason: 'Edited via WebUI' };
+    if (name !== undefined) opts.name = name;
+    if (color !== undefined && /^#?[0-9a-fA-F]{6}$/.test(color)) opts.color = parseInt(color.replace('#', ''), 16);
+    if (permissions !== undefined) opts.permissions = BigInt(permissions);
+    if (hoist !== undefined) opts.hoist = !!hoist;
+    if (mentionable !== undefined) opts.mentionable = !!mentionable;
+    await role.edit(opts);
+    res.json({ ok: true, role: { id: role.id, name: role.name, color: role.hexColor, position: role.position, hoist: role.hoist, mentionable: role.mentionable, permissions: role.permissions.bitfield.toString() } });
+  } catch (err) {
+    console.error('Error editing role:', err);
+    res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
+app.post('/api/roles/delete', async (req, res) => {
+  try {
+    const guildId = process.env.GUILD_ID;
+    const guild = await client.guilds.fetch(guildId);
+    await guild.roles.fetch();
+    const { roleId } = req.body || {};
+    if (!roleId) return res.status(400).json({ ok: false, message: 'roleId is required' });
+    const role = guild.roles.cache.get(roleId);
+    if (!role) return res.status(404).json({ ok: false, message: 'Role not found' });
+    if (role.managed) return res.status(400).json({ ok: false, message: 'Cannot delete managed/integration role' });
+    const name = role.name;
+    await role.delete('Deleted via WebUI');
+    res.json({ ok: true, name });
+  } catch (err) {
+    console.error('Error deleting role:', err);
+    res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
+app.get('/api/roles/details', async (req, res) => {
+  try {
+    const guildId = process.env.GUILD_ID;
+    const guild = await client.guilds.fetch(guildId);
+    await guild.roles.fetch();
+    const { roleId } = req.query;
+    if (!roleId) return res.status(400).json({ error: 'roleId is required' });
+    const role = guild.roles.cache.get(roleId);
+    if (!role) return res.status(404).json({ error: 'Role not found' });
+    res.json({
+      id: role.id,
+      name: role.name,
+      color: role.hexColor,
+      position: role.position,
+      hoist: role.hoist,
+      mentionable: role.mentionable,
+      managed: role.managed,
+      permissions: role.permissions.bitfield.toString(),
+      memberCount: role.members.size,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
