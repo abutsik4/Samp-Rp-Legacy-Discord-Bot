@@ -64,6 +64,7 @@ export default function EmbedsPage() {
   const [editing, setEditing] = useState<EmbedData | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingChannelId, setEditingChannelId] = useState<string | null>(null);
+  const [editingEmbedIndex, setEditingEmbedIndex] = useState<number | null>(null);
   const [showEditor, setShowEditor] = useState(false);
   const [channelSearch, setChannelSearch] = useState("");
   const [selectedChannel, setSelectedChannel] = useState("");
@@ -110,18 +111,19 @@ export default function EmbedsPage() {
     id: genId(), title: "", description: "", color: "#5865F2", fields: [],
   });
 
-  const openEditor = (embed?: EmbedData, messageId?: string, channelId?: string) => {
+  const openEditor = (embed?: EmbedData, messageId?: string, channelId?: string, embedIdx?: number) => {
     setEditing(embed ? { ...embed, fields: embed.fields.map(f => ({ ...f })) } : newEmbed());
     setEditingMessageId(messageId || null);
     setEditingChannelId(channelId || null);
+    setEditingEmbedIndex(embedIdx ?? null);
     setShowEditor(true);
   };
 
   const saveEmbed = () => {
     if (!editing) return;
     if (editingMessageId && editingChannelId) {
-      editBotMessage(editingChannelId, editingMessageId, editing);
-      setShowEditor(false); setEditing(null); setEditingMessageId(null); setEditingChannelId(null);
+      editBotMessage(editingChannelId, editingMessageId, editing, editingEmbedIndex);
+      setShowEditor(false); setEditing(null); setEditingMessageId(null); setEditingChannelId(null); setEditingEmbedIndex(null);
       return;
     }
     const idx = embeds.findIndex(e => e.id === editing.id);
@@ -213,17 +215,43 @@ export default function EmbedsPage() {
     setBotMsgLoading(false);
   }, []);
 
-  const editBotMessage = async (channelId: string, messageId: string, embed: EmbedData) => {
+  const editBotMessage = async (channelId: string, messageId: string, embed: EmbedData, embedIdx?: number | null) => {
     setBotMsgSending(p => ({ ...p, [messageId]: true }));
     try {
+      const payload: Record<string, unknown> = { channelId, messageId, title: embed.title, description: embed.description, color: embed.color, fields: embed.fields.filter(f => f.name || f.value) };
+      if (typeof embedIdx === 'number') payload.embedIndex = embedIdx;
       const res = await fetch("/api/proxy/edit-embed", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channelId, messageId, title: embed.title, description: embed.description, color: embed.color, fields: embed.fields.filter(f => f.name || f.value) }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (data.ok) {
         setBotMsgResults(p => ({ ...p, [messageId]: { ok: true, msg: "Обновлено!" } }));
         setTimeout(() => fetchBotMessages(channelId), 500);
+      } else {
+        setBotMsgResults(p => ({ ...p, [messageId]: { ok: false, msg: data.message || "Ошибка" } }));
+      }
+    } catch (e: unknown) {
+      setBotMsgResults(p => ({ ...p, [messageId]: { ok: false, msg: (e as Error).message } }));
+    }
+    setBotMsgSending(p => ({ ...p, [messageId]: false }));
+  };
+
+  const removeEmbed = async (channelId: string, messageId: string, embedIndex: number, embedTitle: string) => {
+    if (!confirm(`Удалить embed "${embedTitle || '#' + (embedIndex + 1)}" из сообщения?`)) return;
+    setBotMsgSending(p => ({ ...p, [messageId]: true }));
+    try {
+      const res = await fetch("/api/proxy/remove-embed", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channelId, messageId, embedIndex }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        if (data.deleted) {
+          setBotMessages(prev => prev.filter(m => m.id !== messageId));
+        }
+        setBotMsgResults(p => ({ ...p, [messageId]: { ok: true, msg: data.deleted ? "Сообщение удалено (последний embed)" : `Embed удалён, осталось: ${data.remainingEmbeds}` } }));
+        if (!data.deleted) setTimeout(() => fetchBotMessages(channelId), 500);
       } else {
         setBotMsgResults(p => ({ ...p, [messageId]: { ok: false, msg: data.message || "Ошибка" } }));
       }
@@ -405,12 +433,33 @@ export default function EmbedsPage() {
                   </div>
 
                   {msg.embeds.map((emb, ei) => (
-                    <div key={ei} className="mx-5 my-3">
+                    <div key={ei} className="mx-5 my-3 group/embed relative">
                       <div className="bg-[#2b2d31] rounded-lg overflow-hidden border border-white/5">
                         <div className="flex">
                           <div className="w-1 rounded-l" style={{ backgroundColor: emb.color || "#5865F2" }} />
                           <div className="p-4 space-y-2 flex-1 min-w-0">
-                            {emb.title && <h4 className="font-bold text-white text-sm">{emb.title}</h4>}
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                {emb.title && <h4 className="font-bold text-white text-sm">{emb.title}</h4>}
+                              </div>
+                              <div className="flex gap-1 opacity-0 group-hover/embed:opacity-100 transition-opacity shrink-0">
+                                <button
+                                  onClick={() => openEditor(
+                                    { id: msg.id + '-' + ei, title: emb.title || "", description: emb.description || "", color: emb.color || "#5865F2", fields: (emb.fields || []).map(f => ({ name: f.name, value: f.value, inline: !!f.inline })) },
+                                    msg.id, msg.channelId, ei
+                                  )}
+                                  disabled={botMsgSending[msg.id]}
+                                  className="px-1.5 py-0.5 rounded bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-400 text-xs disabled:opacity-40 transition-colors"
+                                  title="Редактировать этот embed"
+                                >✏️</button>
+                                <button
+                                  onClick={() => removeEmbed(msg.channelId, msg.id, ei, emb.title || '')}
+                                  disabled={botMsgSending[msg.id]}
+                                  className="px-1.5 py-0.5 rounded bg-red-500/20 hover:bg-red-500/30 text-red-400 text-xs disabled:opacity-40 transition-colors"
+                                  title="Удалить этот embed"
+                                >🗑️</button>
+                              </div>
+                            </div>
                             {emb.description && <p className="text-zinc-300 text-xs whitespace-pre-line line-clamp-6">{emb.description}</p>}
                             {emb.fields && emb.fields.length > 0 && (
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5 mt-2">
@@ -445,17 +494,22 @@ export default function EmbedsPage() {
                   <div className="flex gap-2 px-5 py-3 border-t border-white/10 flex-wrap">
                     {msg.embeds.length > 0 && (
                       <>
-                        <button
-                          onClick={() => {
-                            const emb = msg.embeds[0];
-                            openEditor(
-                              { id: msg.id, title: emb.title || "", description: emb.description || "", color: emb.color || "#5865F2", fields: (emb.fields || []).map(f => ({ name: f.name, value: f.value, inline: !!f.inline })) },
-                              msg.id, msg.channelId
-                            );
-                          }}
-                          disabled={botMsgSending[msg.id]}
-                          className="px-4 py-2 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 transition-colors text-sm font-medium disabled:opacity-40"
-                        >✏️ Редактировать</button>
+                        {msg.embeds.length === 1 && (
+                          <button
+                            onClick={() => {
+                              const emb = msg.embeds[0];
+                              openEditor(
+                                { id: msg.id, title: emb.title || "", description: emb.description || "", color: emb.color || "#5865F2", fields: (emb.fields || []).map(f => ({ name: f.name, value: f.value, inline: !!f.inline })) },
+                                msg.id, msg.channelId, 0
+                              );
+                            }}
+                            disabled={botMsgSending[msg.id]}
+                            className="px-4 py-2 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 transition-colors text-sm font-medium disabled:opacity-40"
+                          >✏️ Редактировать</button>
+                        )}
+                        {msg.embeds.length > 1 && (
+                          <span className="text-zinc-500 text-xs self-center">Наведите на embed для ✏️/🗑️</span>
+                        )}
                         <button onClick={() => importToTemplates(msg)} className="px-4 py-2 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 transition-colors text-sm font-medium">📥 В шаблоны</button>
                       </>
                     )}
@@ -476,12 +530,12 @@ export default function EmbedsPage() {
               <h2 className="text-xl font-bold text-white">
                 {editingMessageId ? "✏️ Редактировать сообщение бота" : embeds.some(e => e.id === editing.id) ? "✏️ Редактировать Embed" : "✨ Новый Embed"}
               </h2>
-              <button onClick={() => { setShowEditor(false); setEditing(null); setEditingMessageId(null); setEditingChannelId(null); }} className="text-zinc-500 hover:text-white transition-colors text-xl">✕</button>
+              <button onClick={() => { setShowEditor(false); setEditing(null); setEditingMessageId(null); setEditingChannelId(null); setEditingEmbedIndex(null); }} className="text-zinc-500 hover:text-white transition-colors text-xl">✕</button>
             </div>
 
             {editingMessageId && (
               <div className="mx-6 mt-4 p-2 rounded-lg bg-purple-500/10 border border-purple-500/30 text-purple-300 text-xs">
-                🤖 Редактирование live-сообщения (ID: {editingMessageId})
+                🤖 Редактирование live-сообщения (ID: {editingMessageId}){typeof editingEmbedIndex === 'number' ? ` — Embed #${editingEmbedIndex + 1}` : ''}
               </div>
             )}
 
@@ -548,7 +602,7 @@ export default function EmbedsPage() {
               </div>
             </div>
             <div className="flex justify-end gap-3 p-6 border-t border-white/10">
-              <button onClick={() => { setShowEditor(false); setEditing(null); setEditingMessageId(null); setEditingChannelId(null); }} className="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400 text-sm font-medium transition-colors">Отмена</button>
+              <button onClick={() => { setShowEditor(false); setEditing(null); setEditingMessageId(null); setEditingChannelId(null); setEditingEmbedIndex(null); }} className="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400 text-sm font-medium transition-colors">Отмена</button>
               <button onClick={saveEmbed} disabled={!editing.title && !editing.description} className="px-5 py-2.5 rounded-xl bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 font-bold border border-blue-500/50 transition-all disabled:opacity-40 text-sm">
                 {editingMessageId ? "✏️ Обновить сообщение" : "💾 Сохранить"}
               </button>

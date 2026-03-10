@@ -35,6 +35,10 @@ const {
 } = require('./utils/verificationManager');
 const { postAdminGuide } = require('./utils/adminGuide');
 const {
+  handleVoiceStateUpdate: handleTempVoiceUpdate,
+  cleanupOnStartup: cleanupTempVoice
+} = require('./utils/tempVoiceManager');
+const {
   PACK_CHOICES,
   getGuildConfig,
   getRecruitmentMessageTemplates,
@@ -716,6 +720,7 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildInvites,
     GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildVoiceStates,
     
   ]
 });
@@ -832,7 +837,21 @@ client.once(Events.ClientReady, async c => {
   });
   console.log(`[PRESENCE] Applied presence: ${CURRENT_BOT_PRESENCE}`);
   await refreshInviteCache();
+  // Cleanup orphaned temp voice channels
+  const guildForCleanup = client.guilds.cache.get(process.env.GUILD_ID);
+  if (guildForCleanup) {
+    try { await cleanupTempVoice(guildForCleanup); } catch (e) { console.error('[TEMP-VOICE] Startup cleanup error:', e); }
+  }
   console.log('[CMD] Slash command runtime is disabled. WebUI is the control plane.');
+});
+
+// Temp voice channel handler (join-to-create)
+client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
+  try {
+    await handleTempVoiceUpdate(oldState, newState);
+  } catch (e) {
+    console.error('[TEMP-VOICE] voiceStateUpdate error:', e);
+  }
 });
 
 // Auto roles on member join (members + bots + invite mapping)
@@ -2373,7 +2392,7 @@ app.get('/api/structure/live', async (req, res) => {
 // API: Edit an existing bot message (embed) by channel+message ID
 app.post('/api/edit-embed', async (req, res) => {
   try {
-    const { channelId, messageId, title, description, color, fields } = req.body || {};
+    const { channelId, messageId, title, description, color, fields, embedIndex } = req.body || {};
     if (!channelId || !messageId) return res.status(400).json({ ok: false, message: 'channelId и messageId обязательны' });
 
     const channel = await client.channels.fetch(channelId);
@@ -2385,19 +2404,30 @@ app.post('/api/edit-embed', async (req, res) => {
       return res.status(400).json({ ok: false, message: 'Бот может редактировать только свои сообщения' });
     }
 
-    const embed = baseEmbed();
-    if (title) embed.setTitle(title.slice(0, 256));
-    if (description) embed.setDescription(description.slice(0, 4096));
+    const newEmbed = baseEmbed();
+    if (title) newEmbed.setTitle(title.slice(0, 256));
+    if (description) newEmbed.setDescription(description.slice(0, 4096));
     if (color && /^#?[0-9a-fA-F]{6}$/.test(color)) {
-      embed.setColor(parseInt(color.replace('#', ''), 16));
+      newEmbed.setColor(parseInt(color.replace('#', ''), 16));
     }
     if (fields && Array.isArray(fields)) {
       for (const f of fields.slice(0, 25)) {
-        embed.addFields({ name: (f.name || '\u200b').slice(0, 256), value: (f.value || '\u200b').slice(0, 1024), inline: !!f.inline });
+        newEmbed.addFields({ name: (f.name || '\u200b').slice(0, 256), value: (f.value || '\u200b').slice(0, 1024), inline: !!f.inline });
       }
     }
 
-    await message.edit({ embeds: [embed] });
+    // Multi-embed support: if embedIndex is specified, only replace that embed
+    let editEmbeds;
+    if (typeof embedIndex === 'number' && message.embeds.length > 1) {
+      const { EmbedBuilder } = require('discord.js');
+      editEmbeds = message.embeds.map((e, i) =>
+        i === embedIndex ? newEmbed : EmbedBuilder.from(e)
+      );
+    } else {
+      editEmbeds = [newEmbed];
+    }
+
+    await message.edit({ embeds: editEmbeds });
     res.json({ ok: true, messageId: message.id, channelName: channel.name });
   } catch (err) {
     console.error('Error in /api/edit-embed:', err);
@@ -2440,6 +2470,39 @@ app.get('/api/bot-messages', async (req, res) => {
   } catch (err) {
     console.error('Error in /api/bot-messages:', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Remove a single embed from a multi-embed message ──
+app.post('/api/remove-embed', async (req, res) => {
+  try {
+    const { channelId, messageId, embedIndex } = req.body || {};
+    if (!channelId || !messageId || typeof embedIndex !== 'number') {
+      return res.status(400).json({ ok: false, message: 'channelId, messageId и embedIndex обязательны' });
+    }
+    const channel = await client.channels.fetch(channelId);
+    if (!channel) return res.status(404).json({ ok: false, message: 'Канал не найден' });
+    const message = await channel.messages.fetch(messageId);
+    if (!message) return res.status(404).json({ ok: false, message: 'Сообщение не найдено' });
+    if (message.author.id !== client.user.id) {
+      return res.status(400).json({ ok: false, message: 'Бот может редактировать только свои сообщения' });
+    }
+    if (embedIndex < 0 || embedIndex >= message.embeds.length) {
+      return res.status(400).json({ ok: false, message: `embedIndex вне диапазона (0-${message.embeds.length - 1})` });
+    }
+    const { EmbedBuilder } = require('discord.js');
+    const remaining = message.embeds
+      .filter((_, i) => i !== embedIndex)
+      .map(e => EmbedBuilder.from(e));
+    if (remaining.length === 0) {
+      await message.delete();
+      return res.json({ ok: true, deleted: true, messageId: message.id });
+    }
+    await message.edit({ embeds: remaining });
+    res.json({ ok: true, deleted: false, messageId: message.id, remainingEmbeds: remaining.length });
+  } catch (err) {
+    console.error('Error in /api/remove-embed:', err);
+    res.status(500).json({ ok: false, message: err.message });
   }
 });
 

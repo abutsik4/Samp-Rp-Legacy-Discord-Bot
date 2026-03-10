@@ -122,6 +122,23 @@ function isStaff(names) {
   return names.some(n => STAFF_PATTERNS.some(p => n.includes(p)));
 }
 
+/* ─── curator → factions mapping ─── */
+const CURATOR_FACTIONS = {
+  '🏛️ Следящий за Mayor/Court': ['MAYOR', 'COURT'],
+  '🕵️ Следящий за FBI':         ['FBI'],
+  '🚓 Следящий за SAPD':        ['LSPD', 'SFPD', 'LVPD'],
+  '🪩 Следящий за Army':        ['ARMY-LV', 'ARMY-SF'],
+  '🚑 Следящий за MOH':         ['MOH'],
+  '🏫 Следящий за Inst':        ['INST'],
+};
+
+function isCuratorFor(names, factionTag) {
+  for (const [curatorName, tags] of Object.entries(CURATOR_FACTIONS)) {
+    if (tags.includes(factionTag) && names.some(n => n.includes(curatorName))) return true;
+  }
+  return false;
+}
+
 /* ─── authority check ─── */
 
 function canApprove(member, factionTag, requestedRoleType) {
@@ -133,15 +150,20 @@ function canApprove(member, factionTag, requestedRoleType) {
   }
   if (member.permissions.has(PermissionsBitField.Flags.Administrator)) return true;
 
-  // Leader requests → ONLY admin/moderator (faction leaders cannot self-approve)
+  // Curator for this faction — can approve deputy + member (NOT leader)
+  if (isCuratorFor(names, factionTag)) {
+    return requestedRoleType !== 'leader';
+  }
+
+  // Leader requests → ONLY admin/moderator/curator (faction leaders cannot self-approve)
   if (requestedRoleType === 'leader') return false;
 
-  // Deputy requests → faction Leader + admin/mod
+  // Deputy requests → faction Leader + admin/mod/curator
   if (requestedRoleType === 'deputy') {
     return names.some(n => n === `👑 ${factionTag} │ Лидер`);
   }
 
-  // Member requests → faction Leader, Deputy + admin/mod
+  // Member requests → faction Leader, Deputy + admin/mod/curator
   if (names.some(n => n === `👑 ${factionTag} │ Лидер`)) return true;
   if (names.some(n => n === `👔 ${factionTag} │ Зам. Лидера`)) return true;
 
@@ -157,6 +179,11 @@ function canRemoveRole(member, factionTag, roleTypeToRemove) {
     return true;
   }
   if (member.permissions.has(PermissionsBitField.Flags.Administrator)) return true;
+
+  // Curator — can remove deputy + member within their factions
+  if (isCuratorFor(names, factionTag)) {
+    return roleTypeToRemove === 'deputy' || roleTypeToRemove === 'member';
+  }
 
   // Leader can remove deputy + member
   if (names.some(n => n === `👑 ${factionTag} │ Лидер`)) {
@@ -181,6 +208,8 @@ function getRemovableRoleTypes(member, factionTag) {
   if (member.permissions.has(PermissionsBitField.Flags.Administrator)) {
     return ['leader', 'deputy', 'member'];
   }
+  // Curator — deputy + member
+  if (isCuratorFor(names, factionTag)) return ['deputy', 'member'];
   // Leader — deputy + member
   if (names.some(n => n === `👑 ${factionTag} │ Лидер`)) return ['deputy', 'member'];
   // Deputy — member only

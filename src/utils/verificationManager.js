@@ -18,7 +18,11 @@ const { baseEmbed } = require('./embedFactory');
 const VERIFICATION_FILE = path.join(__dirname, '..', '..', 'data', 'verification-requests.json');
 
 /* ─── staff check helper ─── */
-const STAFF_PATTERNS = ['🛡️ Админ', '🔨 Модератор', '🛠️ Владелец', '⭐ Гл. Администратор', '👑 Зам. Гл. Админа'];
+const STAFF_PATTERNS = [
+  '🛡️ Админ', '🔨 Модератор', '🛠️ Владелец',
+  '⭐ Гл. Администратор', '👑 Зам. Гл. Админа',
+  'Следящий за'  // All curator roles (Следящий за SAPD, Mayor/Court, etc.)
+];
 function isStaff(names) {
   return names.some(n => STAFF_PATTERNS.some(p => n.includes(p)));
 }

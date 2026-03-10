@@ -19,14 +19,15 @@
 |---|---|
 | **Faction structure** | 10-faction Discord server setup — auto-creates categories, text/voice channels, and hierarchical roles (`Лидер`, `Зам. Лидера`, `Участник`) per faction |
 | **Form-based verification** | Players fill a modal form (nickname, forum link, about); admins approve/deny in a dedicated channel with button UI |
-| **Role requests** | Button-based flow: player clicks → selects faction & role level → approval embed → leaders/deputies approve → bot grants role automatically |
-| **Role removal** | Dropdown-based removal per faction (leaders remove deputies/members, deputies remove members, staff removes all) |
-| **Admin hierarchy** | 5-tier hoisted admin roles (Owner → Head Admin → Deputy Head → Admin → Moderator) with granular permissions |
-| **Curator roles** | 9 hoisted "Следящий" roles for per-faction oversight (Mayor, FBI, LSPD, SFPD, LVPD, Army, MOH, Inst, Court) |
+| **Role requests** | Button-based flow: player clicks → selects faction & role level → approval embed → leaders/deputies/curators approve → bot grants role automatically |
+| **Role removal** | Dropdown-based removal per faction (leaders remove deputies/members, deputies remove members, curators & staff remove all applicable) |
+| **Admin hierarchy** | 5-tier hoisted admin roles (Owner → Head Admin → Deputy Head → Admin → Moderator); senior admins have full rights except channel/category management |
+| **Curator roles** | 6 consolidated hoisted "Следящий" roles with real channel permissions — Mayor/Court, FBI, SAPD (LSPD+SFPD+LVPD), Army, MOH, Inst |
+| **Temp voice channels** | Join-to-create system — faction members join "➕ Создать канал" → bot creates a private `🔉 Username` channel → auto-deletes when empty |
 | **Admin guide** | Auto-generated FAQ/overview posted to admin announcements channel covering all features, permissions, and workflows |
 | **WebUI dashboard** | Next.js admin panel (port 5031) with dark glassmorphism UI — manages guides, embeds, auto-roles, faction viewer, and role requests |
 | **Channel guides** | Dynamic guide embeds per faction — shows channels, roles, descriptions; send/edit directly from WebUI to Discord |
-| **Embed builder** | Create, edit, duplicate, and send rich embeds to any Discord channel; edit previously sent messages |
+| **Embed builder** | Create, edit, duplicate, and send rich embeds to any Discord channel; per-embed edit/delete for multi-embed messages |
 | **Auto-roles** | Configure roles automatically assigned to new members via WebUI |
 | **Recruitment workflow** | Policy-driven architecture via `recruitment-architecture.json` |
 | **Health checks** | Systemd timers, Telegram notifications, and healthcheck scripts |
@@ -121,9 +122,10 @@ Each faction auto-creates:
 - **Category**: `{emoji} {title}`
 - **Text channels**: 📌│объявления, 💬│чат channels, 🗑️│управление-ролями
 - **Voice channels**: 🔊 Совещание, 🎙️ Рабочая, 🤝 Голос 1×1 (2 users), 👥 Голос 2×2 (4 users)
+- **Temp voice**: ➕ Создать канал (join-to-create; auto-deleted when empty)
 - **Roles**: `{emoji} {TAG} │ Лидер`, `{emoji} {TAG} │ Зам. Лидера`, `{emoji} {TAG} │ Участник`
 
-### Global roles (17 total)
+### Global roles (14 total)
 
 | Role | Type | Hoisted |
 |---|---|---|
@@ -132,20 +134,44 @@ Each faction auto-creates:
 | 👑 Зам. Гл. Админа | Admin hierarchy | ✅ |
 | 🛡️ Админ | Admin hierarchy | ✅ |
 | 🔨 Модератор | Admin hierarchy | ✅ |
-| 🏛️ Следящий за Mayor | Curator | ✅ |
-| 🕵️ Следящий за FBI | Curator | ✅ |
-| 🚓 Следящий за LSPD | Curator | ✅ |
-| 🚓 Следящий за SFPD | Curator | ✅ |
-| 🚓 Следящий за LVPD | Curator | ✅ |
-| 🪩 Следящий за Army | Curator | ✅ |
-| 🚑 Следящий за MOH | Curator | ✅ |
-| 🏫 Следящий за Inst | Curator | ✅ |
-| ⚖️ Следящий за Court | Curator | ✅ |
+| 🏛️ Следящий за Mayor/Court | Curator (Мэрия + Суд) | ✅ |
+| 🕵️ Следящий за FBI | Curator (ФБР) | ✅ |
+| 🚓 Следящий за SAPD | Curator (ЛСПД + СФПД + ЛВПД) | ✅ |
+| 🪩 Следящий за Army | Curator (Армия ЛВ + СФ) | ✅ |
+| 🚑 Следящий за MOH | Curator (Минздрав) | ✅ |
+| 🏫 Следящий за Inst | Curator (Инструкторы) | ✅ |
 | ✅ Верифицирован | General | — |
 | ❌ Не верифицирован | General | — |
 | 🤖 Бот | General | — |
 
+### Senior admin permissions
+
+| Role | Channel access | Can manage channels/categories |
+|---|---|---|
+| 🛠️ Владелец | All channels | ❌ (ManageChannels & ManageGuild removed) |
+| ⭐ Гл. Администратор | All channels | ❌ |
+| 👑 Зам. Гл. Админа | All channels | ❌ |
+| 🛡️ Админ | All channels | Unchanged (has full admin perms) |
+
+### Curator role permissions
+
+Curators have **actual channel overwrites** on their assigned faction categories:
+- **View** all channels in their faction(s)
+- **Send messages**, **manage messages**, **mute members** in text channels
+- **Connect**, **speak**, **mute**, **move members** in voice channels
+
+| Curator role | Factions covered |
+|---|---|
+| 🏛️ Следящий за Mayor/Court | MAYOR, COURT |
+| 🕵️ Следящий за FBI | FBI |
+| 🚓 Следящий за SAPD | LSPD, SFPD, LVPD |
+| 🪩 Следящий за Army | ARMY-LV, ARMY-SF |
+| 🚑 Следящий за MOH | MOH |
+| 🏫 Следящий за Inst | INST |
+
 Deploy from WebUI (`/factions`) or via the bot API.
+
+> **Migration:** On deploy, old individual curator roles (Следящий за LSPD/SFPD/LVPD/Mayor/Court) are automatically migrated — members are moved to the new consolidated role and old roles are deleted.
 
 ---
 
@@ -159,7 +185,7 @@ Deploy from WebUI (`/factions`) or via the bot API.
 6. On approve: bot grants `✅ Верифицирован`, removes `❌ Не верифицирован`, sets nickname, DMs the player
 7. On deny: bot DMs the player with the rejection reason
 
-**Who can process verifications:** Owner, Head Admin, Deputy Head Admin, Admin, Moderator
+**Who can process verifications:** Owner, Head Admin, Deputy Head Admin, Admin, Moderator, Curators
 
 ---
 
@@ -175,8 +201,8 @@ Deploy from WebUI (`/factions`) or via the bot API.
 
 | Requested role | Who can approve |
 |---|---|
-| 👥 Участник | Staff + 👑 Лидер + 👔 Зам. Лидера |
-| 👔 Зам. Лидера | Staff + 👑 Лидер |
+| 👥 Участник | Staff + Curator + 👑 Лидер + 👔 Зам. Лидера |
+| 👔 Зам. Лидера | Staff + Curator + 👑 Лидер |
 | 👑 Лидер | Staff only |
 
 ### Role removal permissions
@@ -184,11 +210,12 @@ Deploy from WebUI (`/factions`) or via the bot API.
 | Your role | Can remove |
 |---|---|
 | Staff | 👑 Лидер + 👔 Зам. Лидера + 👥 Участник |
+| Curator (for their factions) | 👔 Зам. Лидера + 👥 Участник |
 | 👑 Лидер | 👔 Зам. Лидера + 👥 Участник |
 | 👔 Зам. Лидера | 👥 Участник |
 
 **Staff** = Owner, Head Admin, Deputy Head Admin, Admin, Moderator
-> Note: Curator roles (Следящий за ...) do **not** have staff permissions for role management.
+**Curator** = Следящий за … roles — have staff-like permissions scoped to their assigned factions
 
 Legacy text commands are still supported:
 - `!роль <лидер|зам|база> @user <reason>` in `📝│запросы-ролей`
@@ -232,6 +259,7 @@ Legacy text commands are still supported:
 | POST | `/api/rules-panel` | Deploy verification rules embed |
 | POST | `/api/pending-panel` | Deploy pending verifications panel |
 | POST | `/api/admin-guide` | Post admin guide/FAQ to announcements channel |
+| POST | `/api/remove-embed` | Remove a single embed from a multi-embed message |
 | GET | `/api/faction-members` | List members with faction roles |
 
 All endpoints require `Authorization: Bearer <WEBUI_AUTH_TOKEN>` header.
@@ -248,8 +276,9 @@ All endpoints require `Authorization: Bearer <WEBUI_AUTH_TOKEN>` header.
 │   └── utils/
 │       ├── adminGuide.js         # Admin guide/FAQ embed generator
 │       ├── embedFactory.js       # Embed template helpers
-│       ├── factionManager.js     # 10-faction Discord structure deployment
-│       ├── roleRequestManager.js # Button-based role request handler
+│       ├── factionManager.js     # 10-faction Discord structure deployment + curator migration
+│       ├── roleRequestManager.js # Button-based role request handler (staff + curator auth)
+│       ├── tempVoiceManager.js   # Join-to-create temporary voice channels
 │       ├── verificationManager.js# Form-based verification system
 │       └── telegram.js           # Telegram notification integration
 ├── webui/                        # Next.js 16 admin panel

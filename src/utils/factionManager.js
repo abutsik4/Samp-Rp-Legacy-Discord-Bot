@@ -184,21 +184,41 @@ const GLOBAL_ROLES = [
   { name: '👑 Зам. Гл. Админа',     color: '#FF7043', hoist: true },
   { name: '🛡️ Админ',               color: '#E91E63', hoist: true },
   { name: '🔨 Модератор',           color: '#9C27B0', hoist: true },
-  // Кураторы организаций (hoisted — отображаются отдельно)
-  { name: '🏛️ Следящий за Mayor',   color: '#F1C40F', hoist: true },
-  { name: '🕵️ Следящий за FBI',     color: '#2C3E50', hoist: true },
-  { name: '🚓 Следящий за LSPD',    color: '#3498DB', hoist: true },
-  { name: '🚓 Следящий за SFPD',    color: '#2980B9', hoist: true },
-  { name: '🚓 Следящий за LVPD',    color: '#1ABC9C', hoist: true },
-  { name: '🪩 Следящий за Army',    color: '#27AE60', hoist: true },
-  { name: '🚑 Следящий за MOH',     color: '#E74C3C', hoist: true },
-  { name: '🏫 Следящий за Inst',    color: '#9B59B6', hoist: true },
-  { name: '⚖️ Следящий за Court',   color: '#E67E22', hoist: true },
+  // Кураторы организаций (consolidated, hoisted)
+  { name: '🏛️ Следящий за Mayor/Court', color: '#F1C40F', hoist: true },
+  { name: '🕵️ Следящий за FBI',         color: '#2C3E50', hoist: true },
+  { name: '🚓 Следящий за SAPD',        color: '#3498DB', hoist: true },
+  { name: '🪩 Следящий за Army',        color: '#27AE60', hoist: true },
+  { name: '🚑 Следящий за MOH',         color: '#E74C3C', hoist: true },
+  { name: '🏫 Следящий за Inst',        color: '#9B59B6', hoist: true },
   // Общие роли
   { name: '✅ Верифицирован',     color: '#4CAF50' },
   { name: '❌ Не верифицирован',  color: '#757575' },
   { name: '🤖 Бот',              color: '#607D8B' }
 ];
+
+// Привязка кураторов к организациям
+const CURATOR_MAP = {
+  'MAYOR':   '🏛️ Следящий за Mayor/Court',
+  'COURT':   '🏛️ Следящий за Mayor/Court',
+  'FBI':     '🕵️ Следящий за FBI',
+  'LSPD':    '🚓 Следящий за SAPD',
+  'SFPD':    '🚓 Следящий за SAPD',
+  'LVPD':    '🚓 Следящий за SAPD',
+  'ARMY-LV': '🪩 Следящий за Army',
+  'ARMY-SF': '🪩 Следящий за Army',
+  'MOH':     '🚑 Следящий за MOH',
+  'INST':    '🏫 Следящий за Inst',
+};
+
+// Миграция: старое название → новое (для переноса участников)
+const MIGRATION_MAP = {
+  '🏛️ Следящий за Mayor': '🏛️ Следящий за Mayor/Court',
+  '🚓 Следящий за LSPD':  '🚓 Следящий за SAPD',
+  '🚓 Следящий за SFPD':  '🚓 Следящий за SAPD',
+  '🚓 Следящий за LVPD':  '🚓 Следящий за SAPD',
+  '⚖️ Следящий за Court': '🏛️ Следящий за Mayor/Court',
+};
 
 let setupStatus = { active: false, progress: 0, total: 0, currentTask: 'Ожидание' };
 const delay = ms => new Promise(res => setTimeout(res, ms));
@@ -263,14 +283,21 @@ function step(msg) { setupStatus.currentTask = msg; setupStatus.progress++; }
 // ════════════════════════════════════════════════════════════
 //  ОСНОВНАЯ ФУНКЦИЯ РАЗВЁРТЫВАНИЯ
 // ════════════════════════════════════════════════════════════
+
+// Shorthand: senior-admin overwrites (ViewChannel + full manage in channels)
+const SENIOR_TEXT_ALLOW = [P.ViewChannel, P.SendMessages, P.ManageMessages, P.MoveMembers, P.MuteMembers, P.ReadMessageHistory, P.AttachFiles, P.EmbedLinks];
+const SENIOR_VOICE_ALLOW = [P.ViewChannel, P.Connect, P.Speak, P.MuteMembers, P.MoveMembers, P.DeafenMembers];
+const CURATOR_TEXT_ALLOW = [P.ViewChannel, P.SendMessages, P.ManageMessages, P.MuteMembers, P.ReadMessageHistory, P.AttachFiles, P.EmbedLinks];
+const CURATOR_VOICE_ALLOW = [P.ViewChannel, P.Connect, P.Speak, P.MuteMembers, P.MoveMembers];
+
 async function deployStructure(guild) {
     if (setupStatus.active) return false;
 
-    // Count tasks: 1(@everyone) + 6(global roles) + 4(start cat + 3 ch)
-    //   + 4(admin cat + 3 ch) + per-faction(3 roles + 1 cat + text + voice)
+    // Count tasks
     let factionTasks = 0;
-    for (const f of FACTIONS) factionTasks += 3 + 1 + f.textChannels.length + f.voiceChannels.length;
-    const totalTasks = 1 + GLOBAL_ROLES.length + 4 + 4 + factionTasks;
+    for (const f of FACTIONS) factionTasks += 3 + 1 + f.textChannels.length + f.voiceChannels.length + 1; // +1 temp voice
+    // 1(@everyone) + roles + 1(senior perms) + 1(migration) + 4(info cat) + 5(admin cat) + factions
+    const totalTasks = 1 + GLOBAL_ROLES.length + 1 + 1 + 4 + 5 + factionTasks;
     setupStatus = { active: true, progress: 0, total: totalTasks, currentTask: 'Запуск...' };
 
     try {
@@ -289,27 +316,33 @@ async function deployStructure(guild) {
             await delay(350);
         }
 
-        const adminRole = rc['🛡️ Админ'];
-        const modRole   = rc['🔨 Модератор'];
-        const verified  = rc['✅ Верифицирован'];
-        const unverified = rc['❌ Не верифицирован'];
-        const headAdmin = rc['⭐ Гл. Администратор'];
+        const ownerRole    = rc['🛠️ Владелец'];
+        const headAdmin    = rc['⭐ Гл. Администратор'];
         const depHeadAdmin = rc['👑 Зам. Гл. Админа'];
+        const adminRole    = rc['🛡️ Админ'];
+        const modRole      = rc['🔨 Модератор'];
+        const verified     = rc['✅ Верифицирован'];
+        const unverified   = rc['❌ Не верифицирован'];
 
-        // Задаём права Гл. Администратору и Зам. Гл. Админа (полные админ-права)
-        const fullAdminPerms = [
+        // ═══ 2b. Права ролей ═══
+        step('🔐 Настройка прав ролей...');
+
+        // Владелец / Гл. Администратор / Зам. Гл. Админа — полные права МИНУС ManageChannels, ManageGuild
+        const seniorAdminPerms = [
             P.ViewChannel, P.SendMessages, P.ReadMessageHistory,
-            P.ManageMessages, P.ManageNicknames,
+            P.ManageMessages, P.ManageNicknames, P.ManageRoles,
             P.KickMembers, P.BanMembers, P.MuteMembers, P.DeafenMembers,
             P.MoveMembers, P.Connect, P.Speak, P.ModerateMembers,
             P.AttachFiles, P.EmbedLinks, P.UseExternalEmojis, P.AddReactions
         ];
-        try { await headAdmin.setPermissions(fullAdminPerms); } catch (_) {}
+        try { await ownerRole.setPermissions(seniorAdminPerms); } catch (_) {}
         await delay(200);
-        try { await depHeadAdmin.setPermissions(fullAdminPerms); } catch (_) {}
+        try { await headAdmin.setPermissions(seniorAdminPerms); } catch (_) {}
+        await delay(200);
+        try { await depHeadAdmin.setPermissions(seniorAdminPerms); } catch (_) {}
         await delay(200);
 
-        // Задаём права Админу
+        // Админ — keep as-is
         try {
             await adminRole.setPermissions([
                 P.ViewChannel, P.SendMessages, P.ReadMessageHistory,
@@ -331,6 +364,39 @@ async function deployStructure(guild) {
             ]);
         } catch (_) {}
         await delay(200);
+
+        // ═══ 2c. Миграция старых кураторских ролей ═══
+        step('🔄 Миграция кураторских ролей...');
+        for (const [oldName, newName] of Object.entries(MIGRATION_MAP)) {
+            const oldRole = guild.roles.cache.find(r => r.name === oldName);
+            if (oldRole) {
+                const newRole = rc[newName];
+                if (newRole) {
+                    for (const [, member] of oldRole.members) {
+                        try {
+                            if (!member.roles.cache.has(newRole.id)) await member.roles.add(newRole);
+                            await member.roles.remove(oldRole);
+                            await delay(200);
+                        } catch (e) { console.error(`[STRUCTURE] Migration error for ${member.user.tag}:`, e.message); }
+                    }
+                    try { await oldRole.delete('SRP Legacy — curator consolidation'); } catch (_) {}
+                }
+            }
+        }
+        await delay(300);
+
+        // Helper: senior admin overwrite entries for text channels
+        const seniorTextOW = [
+            { id: ownerRole.id, allow: SENIOR_TEXT_ALLOW },
+            { id: headAdmin.id, allow: SENIOR_TEXT_ALLOW },
+            { id: depHeadAdmin.id, allow: SENIOR_TEXT_ALLOW },
+        ];
+        // Helper: senior admin overwrite entries for voice channels
+        const seniorVoiceOW = [
+            { id: ownerRole.id, allow: SENIOR_VOICE_ALLOW },
+            { id: headAdmin.id, allow: SENIOR_VOICE_ALLOW },
+            { id: depHeadAdmin.id, allow: SENIOR_VOICE_ALLOW },
+        ];
 
         // ═══ 3. 📚 Основная Информация — верификация + запрос ролей ═══
         step('📚 Категория: Основная Информация...');
@@ -361,6 +427,7 @@ async function deployStructure(guild) {
         step('🛡️ Категория: Администрация...');
         const adminCat = await findOrCreateCategory(guild, '🛡️ Администрация', [
             { id: everyone.id, deny: [P.ViewChannel] },
+            ...seniorTextOW,
             { id: adminRole.id, allow: [P.ViewChannel, P.SendMessages, P.ReadMessageHistory, P.ManageMessages] },
             { id: modRole.id, allow: [P.ViewChannel, P.SendMessages, P.ReadMessageHistory] }
         ]);
@@ -369,6 +436,7 @@ async function deployStructure(guild) {
         step('📢 Канал: объявления-админ...');
         await findOrCreateChannel(guild, '📢│объявления-админ', ChannelType.GuildText, adminCat.id, [
             { id: everyone.id, deny: [P.ViewChannel] },
+            ...seniorTextOW,
             { id: adminRole.id, allow: [P.ViewChannel, P.SendMessages, P.ManageMessages, P.ReadMessageHistory] },
             { id: modRole.id, allow: [P.ViewChannel, P.ReadMessageHistory], deny: [P.SendMessages] }
         ]);
@@ -377,6 +445,7 @@ async function deployStructure(guild) {
         step('📢 Канал: админ-чат...');
         await findOrCreateChannel(guild, '📢│админ-чат', ChannelType.GuildText, adminCat.id, [
             { id: everyone.id, deny: [P.ViewChannel] },
+            ...seniorTextOW,
             { id: adminRole.id, allow: [P.ViewChannel, P.SendMessages, P.ManageMessages] },
             { id: modRole.id, allow: [P.ViewChannel, P.SendMessages] }
         ]);
@@ -385,14 +454,16 @@ async function deployStructure(guild) {
         step('📋 Канал: заявки-верификации...');
         await findOrCreateChannel(guild, '📋│заявки-верификации', ChannelType.GuildText, adminCat.id, [
             { id: everyone.id, deny: [P.ViewChannel] },
+            ...seniorTextOW,
             { id: adminRole.id, allow: [P.ViewChannel, P.SendMessages, P.ManageMessages, P.ReadMessageHistory] },
             { id: modRole.id, allow: [P.ViewChannel, P.SendMessages, P.ReadMessageHistory] }
         ]);
         await delay(300);
 
-        step('�🔊 Голос: админ-совещание...');
+        step('🔊 Голос: админ-совещание...');
         await findOrCreateChannel(guild, '🔊 Админ-совещание', ChannelType.GuildVoice, adminCat.id, [
             { id: everyone.id, deny: [P.ViewChannel] },
+            ...seniorVoiceOW,
             { id: adminRole.id, allow: [P.ViewChannel, P.Connect, P.Speak, P.MoveMembers, P.MuteMembers] },
             { id: modRole.id, allow: [P.ViewChannel, P.Connect, P.Speak] }
         ]);
@@ -416,13 +487,21 @@ async function deployStructure(guild) {
                 await delay(300);
             }
 
+            // Resolve curator role for this faction
+            const curatorRoleName = CURATOR_MAP[faction.tag];
+            const curatorRole = curatorRoleName ? rc[curatorRoleName] : null;
+            const curatorTextOW = curatorRole ? [{ id: curatorRole.id, allow: CURATOR_TEXT_ALLOW }] : [];
+            const curatorVoiceOW = curatorRole ? [{ id: curatorRole.id, allow: CURATOR_VOICE_ALLOW }] : [];
+
             // Категория
             step(`🏗️ ${faction.emoji} ${faction.title} — категория...`);
             const catName = `${faction.emoji} ${faction.title}`;
             const catOW = [
                 { id: everyone.id, deny: [P.ViewChannel] },
+                ...seniorTextOW,
                 { id: adminRole.id, allow: [P.ViewChannel, P.SendMessages, P.ManageMessages, P.MoveMembers, P.MuteMembers, P.Connect, P.Speak, P.ReadMessageHistory] },
                 { id: modRole.id, allow: [P.ViewChannel, P.SendMessages, P.ReadMessageHistory, P.Connect, P.Speak] },
+                ...curatorTextOW,
                 { id: fR.leader.id, allow: [P.ViewChannel, P.ManageMessages, P.SendMessages, P.Connect, P.Speak, P.MuteMembers, P.MoveMembers, P.ReadMessageHistory] },
                 { id: fR.deputy.id, allow: [P.ViewChannel, P.ManageMessages, P.SendMessages, P.Connect, P.Speak, P.MuteMembers, P.ReadMessageHistory] },
                 { id: fR.member.id, allow: [P.ViewChannel, P.SendMessages, P.Connect, P.Speak, P.ReadMessageHistory] }
@@ -435,31 +514,33 @@ async function deployStructure(guild) {
                 step(`  📝 ${faction.title} — ${chDef.name}...`);
                 let overwrites;
                 if (chDef.perm === 'announce') {
-                    // Leader/deputy write, members read-only
                     overwrites = [
                         { id: everyone.id, deny: [P.ViewChannel] },
+                        ...seniorTextOW,
                         { id: adminRole.id, allow: [P.ViewChannel, P.SendMessages, P.ManageMessages, P.ReadMessageHistory] },
                         { id: modRole.id, allow: [P.ViewChannel, P.SendMessages, P.ReadMessageHistory] },
+                        ...curatorTextOW,
                         { id: fR.leader.id, allow: [P.ViewChannel, P.SendMessages, P.ManageMessages] },
                         { id: fR.deputy.id, allow: [P.ViewChannel, P.SendMessages, P.ManageMessages] },
                         { id: fR.member.id, allow: [P.ViewChannel, P.ReadMessageHistory], deny: [P.SendMessages] }
                     ];
                 } else if (chDef.perm === 'manage') {
-                    // Leader/deputy/admin/mod only — members cannot see
                     overwrites = [
                         { id: everyone.id, deny: [P.ViewChannel] },
+                        ...seniorTextOW,
                         { id: adminRole.id, allow: [P.ViewChannel, P.SendMessages, P.ManageMessages, P.ReadMessageHistory] },
                         { id: modRole.id, allow: [P.ViewChannel, P.SendMessages, P.ReadMessageHistory] },
+                        ...curatorTextOW,
                         { id: fR.leader.id, allow: [P.ViewChannel, P.SendMessages, P.ReadMessageHistory] },
                         { id: fR.deputy.id, allow: [P.ViewChannel, P.SendMessages, P.ReadMessageHistory] },
-                        // fR.member intentionally NOT included
                     ];
                 } else {
-                    // 'chat' — all faction members can see and write
                     overwrites = [
                         { id: everyone.id, deny: [P.ViewChannel] },
+                        ...seniorTextOW,
                         { id: adminRole.id, allow: [P.ViewChannel, P.SendMessages, P.ManageMessages, P.ReadMessageHistory] },
                         { id: modRole.id, allow: [P.ViewChannel, P.SendMessages, P.ReadMessageHistory] },
+                        ...curatorTextOW,
                         { id: fR.leader.id, allow: [P.ViewChannel, P.SendMessages, P.ManageMessages] },
                         { id: fR.deputy.id, allow: [P.ViewChannel, P.SendMessages, P.ManageMessages] },
                         { id: fR.member.id, allow: [P.ViewChannel, P.SendMessages] }
@@ -474,21 +555,23 @@ async function deployStructure(guild) {
                 step(`  🔊 ${faction.title} — ${vDef.name}...`);
                 let overwrites;
                 if (vDef.perm === 'vLeader') {
-                    // Leader/deputy get mute/move
                     overwrites = [
                         { id: everyone.id, deny: [P.ViewChannel] },
+                        ...seniorVoiceOW,
                         { id: adminRole.id, allow: [P.ViewChannel, P.Connect, P.Speak, P.MuteMembers, P.MoveMembers] },
                         { id: modRole.id, allow: [P.ViewChannel, P.Connect, P.Speak] },
+                        ...curatorVoiceOW,
                         { id: fR.leader.id, allow: [P.ViewChannel, P.Connect, P.Speak, P.MuteMembers, P.MoveMembers] },
                         { id: fR.deputy.id, allow: [P.ViewChannel, P.Connect, P.Speak, P.MuteMembers] },
                         { id: fR.member.id, allow: [P.ViewChannel, P.Connect, P.Speak] }
                     ];
                 } else {
-                    // 'vAll' — everyone equal
                     overwrites = [
                         { id: everyone.id, deny: [P.ViewChannel] },
+                        ...seniorVoiceOW,
                         { id: adminRole.id, allow: [P.ViewChannel, P.Connect, P.Speak, P.MoveMembers] },
                         { id: modRole.id, allow: [P.ViewChannel, P.Connect, P.Speak] },
+                        ...curatorVoiceOW,
                         { id: fR.leader.id, allow: [P.ViewChannel, P.Connect, P.Speak, P.MoveMembers] },
                         { id: fR.deputy.id, allow: [P.ViewChannel, P.Connect, P.Speak] },
                         { id: fR.member.id, allow: [P.ViewChannel, P.Connect, P.Speak] }
@@ -497,6 +580,21 @@ async function deployStructure(guild) {
                 await findOrCreateChannel(guild, vDef.name, ChannelType.GuildVoice, cat.id, overwrites, { userLimit: vDef.userLimit || 0 });
                 await delay(300);
             }
+
+            // ── Временный голосовой канал (join-to-create) ──
+            step(`  ➕ ${faction.title} — создать канал...`);
+            const tempVoiceOW = [
+                { id: everyone.id, deny: [P.ViewChannel] },
+                ...seniorVoiceOW,
+                { id: adminRole.id, allow: [P.ViewChannel, P.Connect, P.Speak] },
+                { id: modRole.id, allow: [P.ViewChannel, P.Connect, P.Speak] },
+                ...curatorVoiceOW,
+                { id: fR.leader.id, allow: [P.ViewChannel, P.Connect, P.Speak] },
+                { id: fR.deputy.id, allow: [P.ViewChannel, P.Connect, P.Speak] },
+                { id: fR.member.id, allow: [P.ViewChannel, P.Connect, P.Speak] }
+            ];
+            await findOrCreateChannel(guild, '➕ Создать канал', ChannelType.GuildVoice, cat.id, tempVoiceOW);
+            await delay(300);
         }
 
         setupStatus.currentTask = '✅ Развёртывание завершено успешно!';
@@ -511,4 +609,4 @@ async function deployStructure(guild) {
 
 function getSetupStatus() { return setupStatus; }
 
-module.exports = { deployStructure, getSetupStatus, FACTIONS, GLOBAL_ROLES };
+module.exports = { deployStructure, getSetupStatus, FACTIONS, GLOBAL_ROLES, CURATOR_MAP };
