@@ -192,17 +192,32 @@ async function postVerificationPanel(guild) {
   return { channelId: channel.id, channelName: channel.name };
 }
 
-/* ─── post rules embed in 📋│правила-верификации ─── */
-async function postRulesEmbed(guild) {
-  const channel = guild.channels.cache.find(ch => ch.name === '📋│правила-верификации');
-  if (!channel) throw new Error('Канал 📋│правила-верификации не найден.');
+/* ─── post server rules + welcome in 📜│правила ─── */
+async function postServerRules(guild) {
+  // Find the rules channel by name or fallback to old "rules"
+  let channel = guild.channels.cache.find(ch => ch.name === '📜│правила');
+  if (!channel) channel = guild.channels.cache.find(ch => ch.name === 'rules');
+  if (!channel) throw new Error('Канал 📜│правила не найден.');
+
+  // Rename if still called "rules"
+  if (channel.name === 'rules') {
+    try { await channel.setName('📜│правила', 'SRP Legacy — server rules channel'); } catch (_) {}
+  }
+
+  const welcomeEmbed = baseEmbed()
+    .setTitle('🌟 Добро пожаловать на SRP | Legacy | AF & LEA!')
+    .setDescription(
+      'Это официальный Discord силовых структур и государственных организаций сервера **Samp-Rp Legacy**.\n\n' +
+      '📢 **Здесь вы найдёте:**\n' +
+      '• Каналы организаций (ФБР, ПД, Армия, Мэрия, МОЗ, Суд, Инструкторы)\n' +
+      '• Систему верификации и запросов ролей\n' +
+      '• Голосовые каналы для совещаний и оперативной работы\n\n' +
+      '⬇️ **Начните с прочтения правил ниже, затем пройдите верификацию.**'
+    )
+    .setColor(0x5865F2);
 
   const rulesEmbed = baseEmbed()
     .setTitle('📜 Правила сервера Discord — SRP | Legacy')
-    .setDescription(
-      `Добро пожаловать на официальный Discord-сервер **SRP | Legacy | AF & LEA**!\n` +
-      `Пожалуйста, внимательно прочитайте правила. Нарушение ведёт к предупреждениям, мутам или бану.`
-    )
     .addFields(
       {
         name: '§1. Общие правила поведения',
@@ -230,16 +245,7 @@ async function postRulesEmbed(guild) {
           '• Следуйте указаниям модераторов'
       },
       {
-        name: '§4. Верификация',
-        value:
-          '• Верификация обязательна для доступа к каналам организаций\n' +
-          '• Указывайте реальный игровой ник (Имя_Фамилия)\n' +
-          '• Один Discord аккаунт = одна верификация\n' +
-          '• Ложные данные при верификации = бан\n' +
-          '• При смене ника в игре — обратитесь к администрации'
-      },
-      {
-        name: '§5. Роли и организации',
+        name: '§4. Роли и организации',
         value:
           '• Запрос роли доступен только после верификации\n' +
           '• Не злоупотребляйте запросами ролей\n' +
@@ -247,7 +253,7 @@ async function postRulesEmbed(guild) {
           '• Администрация может снять роль без предупреждения при нарушении правил'
       },
       {
-        name: '§6. Администрация',
+        name: '§5. Администрация',
         value:
           '• Решения администрации не подлежат публичному обсуждению\n' +
           '• По вопросам обращайтесь в личные сообщения администраторам\n' +
@@ -261,13 +267,71 @@ async function postRulesEmbed(guild) {
           '🔸 **Мут** — за повторные нарушения или спам\n' +
           '🔸 **Кик** — за серьёзные нарушения\n' +
           '🔸 **Бан** — за грубые нарушения или повторный кик\n\n' +
-          '📌 *Нажимая кнопку верификации, вы соглашаетесь с правилами сервера.*'
+          '📌 *Прочитав правила, перейдите в канал **✅│верификация** для получения доступа.*'
       }
     )
     .setColor(0x5865F2);
 
-  await channel.send({ embeds: [rulesEmbed] });
-  console.log('[VERIFY] Rules embed posted in #📋│правила-верификации');
+  await channel.send({ embeds: [welcomeEmbed, rulesEmbed] });
+  console.log('[VERIFY] Server rules posted in #📜│правила');
+  return { channelId: channel.id, channelName: channel.name };
+}
+
+/* ─── post verification guide in 📝│как-верифицироваться ─── */
+async function postVerificationGuide(guild) {
+  // Find renamed channel or old name
+  let channel = guild.channels.cache.find(ch => ch.name === '📝│как-верифицироваться');
+  if (!channel) channel = guild.channels.cache.find(ch => ch.name === '📋│правила-верификации');
+  if (!channel) throw new Error('Канал 📝│как-верифицироваться не найден.');
+
+  // Rename if still called old name
+  if (channel.name === '📋│правила-верификации') {
+    try { await channel.setName('📝│как-верифицироваться', 'SRP Legacy — verification guide'); } catch (_) {}
+  }
+
+  const guideEmbed = baseEmbed()
+    .setTitle('📝 Как пройти верификацию')
+    .setDescription(
+      'Верификация необходима для доступа к каналам организаций и запросам ролей.\n' +
+      'Процесс занимает несколько минут и рассматривается администрацией.'
+    )
+    .addFields(
+      {
+        name: '🔹 Шаг 1 — Прочитайте правила',
+        value: 'Познакомьтесь с правилами сервера в канале **📜│правила** (самый верх сервера). Без прочтения правил верификация может быть отклонена.'
+      },
+      {
+        name: '🔹 Шаг 2 — Нажмите кнопку',
+        value: 'Перейдите в канал **✅│верификация** и нажмите кнопку **Пройти верификацию**.'
+      },
+      {
+        name: '🔹 Шаг 3 — Заполните форму',
+        value:
+          'В открывшемся окне укажите:\n' +
+          '• **Игровой ник** — в формате `Имя_Фамилия` (как в игре)\n' +
+          '• **Ссылка на форум** — ваш профиль на форуме Samp-Rp\n' +
+          '• **О себе** — кратко о себе (опыт, организация, цель)'
+      },
+      {
+        name: '🔹 Шаг 4 — Ожидайте решения',
+        value:
+          'Ваша заявка появится в админ-канале. Администрация проверит данные и примет решение:\n' +
+          '• ✅ **Одобрено** — бот выдаст роль **✅ Верифицирован**, установит ник и отправит вам сообщение\n' +
+          '• ❌ **Отклонено** — вы получите причину в личных сообщениях и сможете подать повторно'
+      },
+      {
+        name: '❗ Важно',
+        value:
+          '• Один Discord аккаунт = одна верификация\n' +
+          '• Ложные данные = бан\n' +
+          '• При смене игрового ника — обратитесь к администрации\n' +
+          '• После верификации можно запросить роль в канале **📩│запрос-роли**'
+      }
+    )
+    .setColor(0x43B581);
+
+  await channel.send({ embeds: [guideEmbed] });
+  console.log('[VERIFY] Verification guide posted in #📝│как-верифицироваться');
   return { channelId: channel.id, channelName: channel.name };
 }
 
@@ -578,7 +642,8 @@ module.exports = {
   handleInteraction,
   postVerificationPanel,
   postPendingPanel,
-  postRulesEmbed,
+  postServerRules,
+  postVerificationGuide,
   loadVerifications,
   saveVerifications,
   findVerificationRequestsChannel,

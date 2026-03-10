@@ -30,7 +30,8 @@ const {
   handleInteraction: handleVerificationInteraction,
   postVerificationPanel,
   postPendingPanel,
-  postRulesEmbed,
+  postServerRules,
+  postVerificationGuide,
   findVerificationRequestsChannel
 } = require('./utils/verificationManager');
 const { postAdminGuide } = require('./utils/adminGuide');
@@ -2116,14 +2117,28 @@ app.post('/api/verification-panel', async (req, res) => {
   }
 });
 
-// ── Post rules embed in 📋│правила-верификации ──
+// ── Post server rules + welcome in 📜│правила ──
 app.post('/api/rules-panel', async (req, res) => {
   try {
     const guildId = process.env.GUILD_ID;
     const guild = client.guilds.cache.get(guildId);
     if (!guild) return res.status(500).json({ error: 'Guild not found' });
     await guild.channels.fetch();
-    const result = await postRulesEmbed(guild);
+    const result = await postServerRules(guild);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Post verification guide in 📝│как-верифицироваться ──
+app.post('/api/verification-guide', async (req, res) => {
+  try {
+    const guildId = process.env.GUILD_ID;
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) return res.status(500).json({ error: 'Guild not found' });
+    await guild.channels.fetch();
+    const result = await postVerificationGuide(guild);
     res.json({ ok: true, ...result });
   } catch (err) {
     res.status(500).json({ error: err.message });

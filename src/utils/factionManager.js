@@ -405,8 +405,8 @@ async function deployStructure(guild) {
         ]);
         await delay(300);
 
-        step('📋 Канал: правила верификации...');
-        await findOrCreateChannel(guild, '📋│правила-верификации', ChannelType.GuildText, startCat.id, [
+        step('� Канал: как-верифицироваться...');
+        await findOrCreateChannel(guild, '📝│как-верифицироваться', ChannelType.GuildText, startCat.id, [
             { id: everyone.id, allow: [P.ViewChannel, P.ReadMessageHistory], deny: [P.SendMessages] }
         ]);
         await delay(300);
