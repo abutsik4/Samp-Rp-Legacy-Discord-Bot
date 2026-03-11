@@ -2,80 +2,245 @@
   <img src="assets/readme-logo.svg" alt="SRP Legacy" width="640" />
 </p>
 
+<h3 align="center">
+  Full-stack Discord management platform — bot + admin dashboard
+</h3>
+
 <p align="center">
-  Discord bot + Next.js admin panel for <strong>SRP Legacy</strong> — full faction management, button-based role requests, form-based verification, channel guide embeds, and auto-role automation.
+  A production-grade <strong>Discord.js v14</strong> bot paired with a <strong>Next.js 16</strong> admin dashboard, built to manage a 10-faction gaming community with automated role workflows, form-based verification, dynamic voice channels, and a complete REST API.
 </p>
 
 <p align="center">
-  <img src="assets/logo-bot.svg" alt="SRP Legacy bot logo" width="180" />
-  <img src="assets/logo-discord-server.svg" alt="SRP Legacy Discord server logo" width="180" />
+  <img src="https://img.shields.io/badge/Node.js-22-339933?logo=nodedotjs&logoColor=white" alt="Node.js" />
+  <img src="https://img.shields.io/badge/Discord.js-v14-5865F2?logo=discord&logoColor=white" alt="Discord.js" />
+  <img src="https://img.shields.io/badge/Express-v5-000000?logo=express&logoColor=white" alt="Express" />
+  <img src="https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white" alt="Next.js" />
+  <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black" alt="React" />
+  <img src="https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white" alt="Tailwind CSS" />
+  <img src="https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/License-MIT-green" alt="MIT License" />
+</p>
+
+<p align="center">
+  <img src="assets/logo-bot.svg" alt="Bot logo" width="140" />
+  <img src="assets/logo-discord-server.svg" alt="Server logo" width="140" />
 </p>
 
 ---
 
-## Features
+## Highlights
 
-| Area | Description |
+- **10-faction server scaffolding** — one-click deploy creates 60+ channels, 44+ roles, and granular permission overwrites per faction
+- **Hierarchical role request workflow** — button/dropdown-driven approval chain with tiered authorization (Staff → Curator → Leader → Deputy)
+- **Modal-based user verification** — form submission, admin review queue, automatic role assignment and nickname sync
+- **Join-to-create voice channels** — ephemeral per-user voice rooms with auto-cleanup
+- **Next.js admin dashboard** — dark glassmorphism UI with real-time faction viewer, embed builder, auto-role config, and role request queue
+- **REST API layer** — 20+ authenticated Express endpoints proxied through Next.js App Router
+- **Production infrastructure** — systemd services, health checks with Telegram alerts, PM2 process management
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
 |---|---|
-| **Faction structure** | 10-faction Discord server setup — auto-creates categories, text/voice channels, and hierarchical roles (`Лидер`, `Зам. Лидера`, `Участник`) per faction |
-| **Form-based verification** | Players fill a modal form (nickname, forum link, about); admins approve/deny in a dedicated channel with button UI |
-| **Role requests** | Button-based flow: player clicks → selects faction & role level → approval embed → leaders/deputies/curators approve → bot grants role automatically |
-| **Role removal** | Dropdown-based removal per faction (leaders remove deputies/members, deputies remove members, curators & staff remove all applicable) |
-| **Admin hierarchy** | 5-tier hoisted admin roles (Owner → Head Admin → Deputy Head → Admin → Moderator); senior admins have full rights except channel/category management |
-| **Curator roles** | 6 consolidated hoisted "Следящий" roles with real channel permissions — Mayor/Court, FBI, SAPD (LSPD+SFPD+LVPD), Army, MOH, Inst |
-| **Temp voice channels** | Join-to-create system — faction members join "➕ Создать канал" → bot creates a private `🔉 Username` channel → auto-deletes when empty |
-| **Admin guide** | Auto-generated FAQ/overview posted to admin announcements channel covering all features, permissions, and workflows |
-| **WebUI dashboard** | Next.js admin panel (port 5031) with dark glassmorphism UI — manages guides, embeds, auto-roles, faction viewer, and role requests |
-| **Channel guides** | Dynamic guide embeds per faction — shows channels, roles, descriptions; send/edit directly from WebUI to Discord |
-| **Embed builder** | Create, edit, duplicate, and send rich embeds to any Discord channel; per-embed edit/delete for multi-embed messages |
-| **Auto-roles** | Configure roles automatically assigned to new members via WebUI |
-| **Recruitment workflow** | Policy-driven architecture via `recruitment-architecture.json` |
-| **Health checks** | Systemd timers, Telegram notifications, and healthcheck scripts |
+| **Bot runtime** | Node.js · Discord.js v14 · Express v5 |
+| **Admin dashboard** | Next.js 16 · React 19 · TypeScript 5 · Tailwind CSS v4 |
+| **API** | RESTful JSON API (Express) with Next.js proxy routes |
+| **Auth** | Token-based (timing-safe comparison) shared secret between services |
+| **Data** | JSON file-based persistence (embeds, roles, verification state) |
+| **Infrastructure** | systemd · PM2 · Cloudflare · Telegram webhook alerts |
+| **CI / QA** | Branding consistency checks · WebUI smoke tests · ESLint |
 
 ---
 
-## Quick start
+## Architecture
 
-### 1) Install
+```
+┌──────────────────────┐        ┌──────────────────────┐        ┌───────────────┐
+│   Next.js Dashboard  │───────▶│   Express REST API   │───────▶│   Discord     │
+│   React 19 + TS      │ proxy  │   Discord.js v14     │ WS +   │   Gateway     │
+│   Tailwind CSS       │ routes │   Token auth         │ REST   │               │
+│   :5031              │        │   :5032              │        │               │
+└──────────────────────┘        └──────────────────────┘        └───────────────┘
+         │                               │
+         │  Auth: WEBUI_AUTH_TOKEN        │  Alerts
+         └──── header on every request    └──────────▶ Telegram Webhooks
+```
+
+**Request flow:** Dashboard → Next.js API route (`/api/proxy/*`) → Express endpoint → Discord API / local state
+
+The frontend never communicates with Discord directly — all mutations are routed through the authenticated Express API, ensuring a single source of truth and centralized audit logging.
+
+---
+
+## Core Systems
+
+### 1. Faction Structure Manager
+
+Automated Discord server scaffolding for 10 organizational factions. A single deploy command creates the entire guild structure:
+
+| What is created | Per faction |
+|---|---|
+| **Category** | Color-coded with emoji prefix |
+| **Text channels** | Announcements (leader-only write), chat, discussion, role-management panel |
+| **Voice channels** | Briefing, work, 1v1 (2 slots), 2v2 (4 slots), join-to-create |
+| **Roles** | Leader, Deputy Leader, Member — each with scoped permissions |
+| **Permission overwrites** | Channel-level ACLs per role type (announce, chat, manage, voice) |
+
+**Additional infrastructure created:**
+- 5-tier admin hierarchy (Owner → Head Admin → Deputy Head → Admin → Moderator) with hoisted roles
+- 6 curator roles covering faction groups (e.g., SAPD curator oversees LSPD + SFPD + LVPD) with real channel permission overwrites
+- General roles: Verified, Unverified, Bot
+- **Automated migration** — detects and consolidates legacy per-faction curator roles into grouped roles
+
+### 2. Role Request Workflow
+
+A complete approval pipeline driven by button interactions and dropdown menus:
+
+```
+Player clicks "Request Role" → selects faction + level → approval embed posted
+→ authorized reviewer approves/denies → bot grants role + posts announcement
+```
+
+**Authorization matrix:**
+
+| Requested level | Approved by |
+|---|---|
+| Member | Staff, Curator, Leader, Deputy Leader |
+| Deputy Leader | Staff, Curator, Leader |
+| Leader | Staff only |
+
+Role removal follows the same hierarchy. Each action is logged with the reviewer's identity and reason.
+
+### 3. User Verification System
+
+Modal form-based verification flow:
+
+1. User clicks **Verify** button → fills modal (game nickname, forum profile, bio)
+2. Request queued in admin-only review channel as an interactive embed
+3. Staff approves → bot assigns Verified role, sets nickname, sends DM confirmation
+4. Staff denies → bot sends DM with rejection reason
+
+Includes duplicate-request blocking and paginated pending queue.
+
+### 4. Temporary Voice Channels
+
+Join-to-create system: entering a designated channel triggers bot to create a private `🔉 <username>` voice channel and move the user in. The channel owner gets mute/move permissions. Channels auto-delete when the last user leaves. Orphaned channels are cleaned up on bot restart.
+
+### 5. Recruitment Architecture
+
+Policy-driven recruitment workflow defined in a JSON configuration file:
+
+- Dedicated recruitment category with guide, announcement feed, Q&A, interview rooms, and waiting channels
+- Configurable workflow roles and approval chains
+- Pinned rules and announcement templates
+- Per-guild overrides supported
+
+---
+
+## Admin Dashboard (WebUI)
+
+Built with **Next.js 16 App Router**, **React 19**, and **Tailwind CSS v4**. Features a dark theme with glassmorphism styling.
+
+| Page | Functionality |
+|---|---|
+| **Dashboard** | Server stats (members, messages, roles), management quick links, live activity log |
+| **Factions** | Visual faction structure viewer, one-click full deploy to Discord |
+| **Guides** | Dynamic per-faction guide embeds — compose content and send/edit directly in Discord channels |
+| **Embeds** | Rich embed builder — create, edit, duplicate, send to any channel; per-embed update/delete on multi-embed messages |
+| **Roles** | Auto-role configuration for new members |
+| **Role Requests** | Pending request queue, approve/deny from the dashboard, deploy request/removal panels |
+| **Stats** | Server activity statistics |
+
+All dashboard actions proxy through authenticated Next.js API routes to the Express backend.
+
+---
+
+## REST API
+
+20+ endpoints exposed on the Express server (default port `5032`), all requiring `Authorization: Bearer <token>`:
+
+| Category | Endpoints | Operations |
+|---|---|---|
+| **Channels & Roles** | `/api/channels`, `/api/roles` | List guild channels and roles |
+| **Structure** | `/api/structure/deploy`, `/api/structure/live`, `/api/structure/status` | Deploy factions, view live state, track progress |
+| **Embeds** | `/api/send-embed`, `/api/edit-embed`, `/api/remove-embed` | Full embed lifecycle management |
+| **Role Requests** | `/api/role-requests`, `/api/role-request/approve`, `/api/role-request/deny` | Queue inspection and workflow actions |
+| **Panels** | `/api/role-request/panel`, `/api/removal-panel`, `/api/verification-panel`, `/api/rules-panel` | Deploy interactive button panels to channels |
+| **Auto-roles** | `/api/auto-roles` | GET/POST auto-role configuration |
+| **Members** | `/api/faction-members` | List members by faction role |
+| **Health** | `/healthz` | Liveness probe for monitoring |
+
+---
+
+## Slash Commands
+
+| Command | Category | Description |
+|---|---|---|
+| `/announce` | Admin | Send announcements to channels |
+| `/assign_pack` | Admin | Assign recruitment packs |
+| `/remove_pack` | Admin | Remove recruitment packs |
+| `/rules` | Admin | Post server rules |
+| `/setup_recruitment` | Admin | Initialize recruitment infrastructure |
+| `/settings-preview` | Admin | Preview current bot settings |
+| `/welcome-preview` | Admin | Preview welcome message |
+| `/giveaway-template` | Fun | Create giveaway templates |
+| `/help` | Utility | Command reference |
+| `/leaderboard` | Utility | Message activity leaderboard |
+| `/ping` | Utility | Latency check |
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+- **Node.js** 22+
+- A Discord bot application with **Server Members** and **Message Content** privileged intents enabled
+
+### Installation
 
 ```bash
+git clone https://github.com/abutsik4/Samp-Rp-Legacy-Discord-Bot.git
+cd Samp-Rp-Legacy-Discord-Bot
+
+# Install bot dependencies
 npm ci
-cd webui && npm ci
+
+# Install dashboard dependencies
+cd webui && npm ci && cd ..
 ```
 
-### 2) Configure environment
+### Configuration
 
-```bash
-cp .env.example .env
+Create `.env` in the project root:
+
+```env
+DISCORD_TOKEN=your_bot_token
+GUILD_ID=your_server_id
+PORT=5032
+WEBUI_AUTH_TOKEN=your_shared_secret
 ```
 
-Required variables in `.env`:
+Create `webui/.env.local`:
 
-| Variable | Purpose |
-|---|---|
-| `DISCORD_TOKEN` | Bot token |
-| `GUILD_ID` | Target Discord server |
-| `PORT` | Express API port (default `5032`) |
-| `WEBUI_AUTH_TOKEN` | Shared secret for WebUI ↔ API auth |
+```env
+DISCORD_API_URL=http://localhost:5032
+WEBUI_AUTH_TOKEN=your_shared_secret   # must match the bot .env
+```
 
-WebUI environment (`webui/.env.local`):
-
-| Variable | Purpose |
-|---|---|
-| `DISCORD_API_URL` | Bot API URL (default `http://localhost:5032`) |
-| `WEBUI_AUTH_TOKEN` | Must match the bot's `.env` value |
-
-### 3) Run
+### Running locally
 
 ```bash
-# Bot (Express API on port 5032)
+# Start the bot (Express API on port 5032)
 node src/index.js
 
-# WebUI (Next.js on port 5031)
+# Start the dashboard (Next.js on port 5031)
 cd webui && npm run build && npm start -- -p 5031
 ```
 
-### 4) Production (systemd)
+### Production deployment (systemd)
 
 ```bash
 sudo cp srp-legacy-bot.service srp-legacy-webui.service /etc/systemd/system/
@@ -83,234 +248,58 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now srp-legacy-bot srp-legacy-webui
 ```
 
----
-
-## Architecture
-
-```
-┌──────────────────┐       ┌──────────────────┐       ┌─────────────┐
-│  Next.js WebUI   │──────▶│  Express API     │──────▶│  Discord    │
-│  :5031           │ proxy │  :5032           │  d.js │  Gateway    │
-│  (Cloudflare)    │  routes│  (index.js)      │       │             │
-└──────────────────┘       └──────────────────┘       └─────────────┘
-```
-
-- **WebUI** → Next.js App Router with proxy API routes (`/api/proxy/*`) that forward to the Express backend
-- **Bot** → Discord.js v14 client + Express server exposing JSON API endpoints
-- **Auth** → All proxy routes include `WEBUI_AUTH_TOKEN` header
+Additional systemd units are provided for health monitoring and failure alerting:
+- `srp-legacy-bot-healthcheck.service` + `.timer` — periodic liveness checks
+- `srp-legacy-bot-failure@.service` — triggers Telegram alerts on service failure
 
 ---
 
-## Faction system
-
-10 factions deployed via `factionManager.js`:
-
-| # | Faction | Tag | Emoji |
-|---|---------|-----|-------|
-| 1 | Мэрия | MAYOR | 🏛️ |
-| 2 | ФБР | FBI | 🕵️ |
-| 3 | ЛСПД | LSPD | 🚓 |
-| 4 | СФПД | SFPD | 🚓 |
-| 5 | ЛВПД | LVPD | 🚓 |
-| 6 | Армия ЛВ | ARMY-LV | 🪖 |
-| 7 | Армия СФ | ARMY-SF | 🪖 |
-| 8 | Минздрав | MOH | 🚑 |
-| 9 | Инструкторы | INST | 🏫 |
-| 10 | Суд | COURT | ⚖️ |
-
-Each faction auto-creates:
-- **Category**: `{emoji} {title}`
-- **Text channels**: 📌│объявления, 💬│чат channels, 🗑️│управление-ролями
-- **Voice channels**: 🔊 Совещание, 🎙️ Рабочая, 🤝 Голос 1×1 (2 users), 👥 Голос 2×2 (4 users)
-- **Temp voice**: ➕ Создать канал (join-to-create; auto-deleted when empty)
-- **Roles**: `{emoji} {TAG} │ Лидер`, `{emoji} {TAG} │ Зам. Лидера`, `{emoji} {TAG} │ Участник`
-
-### Global roles (14 total)
-
-| Role | Type | Hoisted |
-|---|---|---|
-| 🛠️ Владелец | Admin hierarchy | ✅ |
-| ⭐ Гл. Администратор | Admin hierarchy | ✅ |
-| 👑 Зам. Гл. Админа | Admin hierarchy | ✅ |
-| 🛡️ Админ | Admin hierarchy | ✅ |
-| 🔨 Модератор | Admin hierarchy | ✅ |
-| 🏛️ Следящий за Mayor/Court | Curator (Мэрия + Суд) | ✅ |
-| 🕵️ Следящий за FBI | Curator (ФБР) | ✅ |
-| 🚓 Следящий за SAPD | Curator (ЛСПД + СФПД + ЛВПД) | ✅ |
-| 🪩 Следящий за Army | Curator (Армия ЛВ + СФ) | ✅ |
-| 🚑 Следящий за MOH | Curator (Минздрав) | ✅ |
-| 🏫 Следящий за Inst | Curator (Инструкторы) | ✅ |
-| ✅ Верифицирован | General | — |
-| ❌ Не верифицирован | General | — |
-| 🤖 Бот | General | — |
-
-### Senior admin permissions
-
-| Role | Channel access | Can manage channels/categories |
-|---|---|---|
-| 🛠️ Владелец | All channels | ❌ (ManageChannels & ManageGuild removed) |
-| ⭐ Гл. Администратор | All channels | ❌ |
-| 👑 Зам. Гл. Админа | All channels | ❌ |
-| 🛡️ Админ | All channels | Unchanged (has full admin perms) |
-
-### Curator role permissions
-
-Curators have **actual channel overwrites** on their assigned faction categories:
-- **View** all channels in their faction(s)
-- **Send messages**, **manage messages**, **mute members** in text channels
-- **Connect**, **speak**, **mute**, **move members** in voice channels
-
-| Curator role | Factions covered |
-|---|---|
-| 🏛️ Следящий за Mayor/Court | MAYOR, COURT |
-| 🕵️ Следящий за FBI | FBI |
-| 🚓 Следящий за SAPD | LSPD, SFPD, LVPD |
-| 🪩 Следящий за Army | ARMY-LV, ARMY-SF |
-| 🚑 Следящий за MOH | MOH |
-| 🏫 Следящий за Inst | INST |
-
-Deploy from WebUI (`/factions`) or via the bot API.
-
-> **Migration:** On deploy, old individual curator roles (Следящий за LSPD/SFPD/LVPD/Mayor/Court) are automatically migrated — members are moved to the new consolidated role and old roles are deleted.
-
----
-
-## Verification system (form-based)
-
-1. Player reads rules in **📋│правила-верификации**
-2. Clicks **Пройти верификацию** button in **✅│верификация**
-3. Fills a modal form: game nickname (`Имя_Фамилия`), forum profile link, about self
-4. Request appears in **📋│заявки-верификации** (admin-only channel)
-5. Staff clicks **✅ Одобрить** or **❌ Отклонить** on the embed
-6. On approve: bot grants `✅ Верифицирован`, removes `❌ Не верифицирован`, sets nickname, DMs the player
-7. On deny: bot DMs the player with the rejection reason
-
-**Who can process verifications:** Owner, Head Admin, Deputy Head Admin, Admin, Moderator, Curators
-
----
-
-## Role requests (button-based)
-
-1. Player clicks the **Запросить роль** button in **📩│запрос-роли**
-2. Selects a faction and role level from the dropdown
-3. Bot posts an approval embed to the faction's 📌│объявления channel
-4. Authorized users click **Одобрить** or **Отклонить**
-5. Bot auto-grants or denies the role and posts an announcement
-
-### Approval permissions
-
-| Requested role | Who can approve |
-|---|---|
-| 👥 Участник | Staff + Curator + 👑 Лидер + 👔 Зам. Лидера |
-| 👔 Зам. Лидера | Staff + Curator + 👑 Лидер |
-| 👑 Лидер | Staff only |
-
-### Role removal permissions
-
-| Your role | Can remove |
-|---|---|
-| Staff | 👑 Лидер + 👔 Зам. Лидера + 👥 Участник |
-| Curator (for their factions) | 👔 Зам. Лидера + 👥 Участник |
-| 👑 Лидер | 👔 Зам. Лидера + 👥 Участник |
-| 👔 Зам. Лидера | 👥 Участник |
-
-**Staff** = Owner, Head Admin, Deputy Head Admin, Admin, Moderator
-**Curator** = Следящий за … roles — have staff-like permissions scoped to their assigned factions
-
-Legacy text commands are still supported:
-- `!роль <лидер|зам|база> @user <reason>` in `📝│запросы-ролей`
-- `!одобрить <ID>` / `!отклонить <ID> <reason>` in `🔐│одобрение-ролей`
-
----
-
-## WebUI pages
-
-| Route | Description |
-|---|---|
-| `/` | Dashboard overview |
-| `/factions` | Faction structure viewer & deploy |
-| `/guides` | Channel guide embeds — per-faction dynamic content, send/edit to Discord |
-| `/embeds` | Embed builder — create, edit, duplicate, send, update sent messages |
-| `/roles` | Auto-roles configuration |
-| `/role-requests` | Role request management & panel setup |
-| `/stats` | Server statistics |
-
----
-
-## API endpoints (Express, port 5032)
-
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/channels` | List guild text channels |
-| GET | `/api/roles` | List guild roles |
-| GET | `/api/auto-roles` | Get auto-role configuration |
-| POST | `/api/auto-roles` | Save auto-role configuration |
-| GET | `/api/structure/live` | Live faction structure from Discord |
-| GET | `/api/structure/status` | Deployment progress status |
-| POST | `/api/structure/deploy` | Deploy full Discord structure |
-| POST | `/api/send-embed` | Send embed to a channel |
-| POST | `/api/edit-embed` | Edit a previously sent embed |
-| GET | `/api/role-requests` | List pending role requests |
-| POST | `/api/role-request/approve` | Approve a role request |
-| POST | `/api/role-request/deny` | Deny a role request |
-| POST | `/api/role-request/panel` | Deploy role request panel button |
-| POST | `/api/removal-panel` | Deploy role removal panel |
-| POST | `/api/verification-panel` | Deploy verification button panel |
-| POST | `/api/rules-panel` | Deploy verification rules embed |
-| POST | `/api/pending-panel` | Deploy pending verifications panel |
-| POST | `/api/admin-guide` | Post admin guide/FAQ to announcements channel |
-| POST | `/api/remove-embed` | Remove a single embed from a multi-embed message |
-| GET | `/api/faction-members` | List members with faction roles |
-
-All endpoints require `Authorization: Bearer <WEBUI_AUTH_TOKEN>` header.
-
----
-
-## Project structure
+## Project Structure
 
 ```
 ├── src/
-│   ├── index.js                  # Main bot + Express API server
-│   ├── registerCommands.js       # Slash command registration
-│   ├── commands/                 # Slash commands (admin, fun, util)
+│   ├── index.js                     # Bot + Express API server (entry point)
+│   ├── registerCommands.js          # Discord slash command registration
+│   ├── commands/
+│   │   ├── admin/                   # Admin commands (announce, rules, recruitment, etc.)
+│   │   ├── fun/                     # Fun commands (giveaway templates)
+│   │   └── util/                    # Utility commands (help, leaderboard, ping)
 │   └── utils/
-│       ├── adminGuide.js         # Admin guide/FAQ embed generator
-│       ├── embedFactory.js       # Embed template helpers
-│       ├── factionManager.js     # 10-faction Discord structure deployment + curator migration
-│       ├── roleRequestManager.js # Button-based role request handler (staff + curator auth)
-│       ├── tempVoiceManager.js   # Join-to-create temporary voice channels
-│       ├── verificationManager.js# Form-based verification system
-│       └── telegram.js           # Telegram notification integration
-├── webui/                        # Next.js 16 admin panel
+│       ├── factionManager.js        # 10-faction structure deployment + curator migration
+│       ├── roleRequestManager.js    # Hierarchical role request approval workflow
+│       ├── verificationManager.js   # Modal form verification system
+│       ├── tempVoiceManager.js      # Ephemeral join-to-create voice channels
+│       ├── recruitmentArchitectureManager.js  # Policy-driven recruitment workflows
+│       ├── embedFactory.js          # Embed template helpers
+│       ├── adminGuide.js            # Auto-generated admin FAQ
+│       └── telegram.js              # Telegram notification integration
+├── webui/                           # Next.js 16 admin dashboard
 │   └── src/app/
-│       ├── page.tsx              # Dashboard
-│       ├── factions/page.tsx     # Faction viewer
-│       ├── guides/page.tsx       # Channel guide embeds
-│       ├── embeds/page.tsx       # Embed builder
-│       ├── roles/page.tsx        # Auto-roles config
-│       ├── role-requests/page.tsx# Role request management
-│       ├── stats/page.tsx        # Statistics
-│       └── api/proxy/            # Proxy routes → Express API
-├── scripts/                      # Setup & maintenance scripts
-├── data/                         # Runtime state (gitignored)
-├── config.json                   # Bot configuration
-└── recruitment-architecture.json # Recruitment workflow policy
+│       ├── page.tsx                 # Dashboard overview
+│       ├── factions/                # Faction viewer + deploy
+│       ├── guides/                  # Channel guide embeds
+│       ├── embeds/                  # Rich embed builder
+│       ├── roles/                   # Auto-role configuration
+│       ├── role-requests/           # Role request management
+│       ├── stats/                   # Server statistics
+│       └── api/proxy/               # Authenticated proxy routes → Express API
+├── scripts/                         # Deployment, health check, and notification scripts
+├── data/                            # Runtime JSON state (gitignored)
+├── config.json                      # Bot configuration (branding, features, modules)
+└── recruitment-architecture.json    # Recruitment workflow policy definition
 ```
 
 ---
 
-## Security / what not to commit
+## Security
 
-- Never commit `.env` or `webui/.env.local` (contain tokens)
-- Keep secrets in environment variables only
-- Files intentionally ignored by git:
-  - `.env`, `webui/.env*`
-  - `node_modules/`, `logs/`, `backups/`
-  - Runtime state under `data/` (`messages.json`, `recruitment-architecture-state.json`, `role-requests.json`, `verification-requests.json`, `autoroles.json`, `embeds.json`)
-  - Build output (`webui/.next/`)
+- Secrets managed exclusively via environment variables (`.env` / `.env.local`)
+- Token authentication between services with timing-safe comparison (`crypto.timingSafeEqual`)
+- No secrets committed — `.env`, tokens, and runtime state are gitignored
+- WebUI authentication enforced on all API proxy routes
 
 ---
 
 ## License
 
-See `LICENSE`.
+[MIT](LICENSE) — Copyright (c) 2026 Alex
