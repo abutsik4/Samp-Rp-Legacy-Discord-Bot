@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const {
   Client,
+  Collection,
   GatewayIntentBits,
   Events,
   ChannelType
@@ -719,12 +720,38 @@ async function warnThrottled(key, text, minIntervalMs) {
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildInvites,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildVoiceStates,
     
   ]
 });
+
+// ── Load slash commands from src/commands/**/*.js into client.commands ──
+client.commands = new Collection();
+
+function loadCommandsRecursive(dir) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      loadCommandsRecursive(fullPath);
+    } else if (entry.isFile() && entry.name.endsWith('.js')) {
+      try {
+        const command = require(fullPath);
+        if (command.data && typeof command.execute === 'function') {
+          client.commands.set(command.data.name, command);
+          console.log(`[CMD] Loaded: /${command.data.name}`);
+        }
+      } catch (err) {
+        console.error(`[CMD] Failed to load ${fullPath}:`, err.message);
+      }
+    }
+  }
+}
+
+loadCommandsRecursive(path.join(__dirname, 'commands'));
+console.log(`[CMD] ${client.commands.size} slash commands loaded.`);
 
 // Runtime safety: log + alert on unexpected failures.
 process.on('unhandledRejection', err => {
@@ -843,7 +870,7 @@ client.once(Events.ClientReady, async c => {
   if (guildForCleanup) {
     try { await cleanupTempVoice(guildForCleanup); } catch (e) { console.error('[TEMP-VOICE] Startup cleanup error:', e); }
   }
-  console.log('[CMD] Slash command runtime is disabled. WebUI is the control plane.');
+  console.log(`[CMD] ${client.commands.size} slash commands ready.`);
 });
 
 // Temp voice channel handler (join-to-create)
@@ -941,9 +968,32 @@ client.on(Events.MessageCreate, async message => {
   }
 });
 
-// ── Interaction handler (buttons, select menus, modals) ──
+// ── Interaction handler (slash commands, buttons, select menus, modals) ──
 const VERIFICATION_IDS = ['verification_start', 'verification_form', 'verify_approve_', 'verify_deny_', 'verify_pending_'];
 client.on(Events.InteractionCreate, async interaction => {
+
+  // ── Slash commands ──
+  if (interaction.isChatInputCommand()) {
+    const command = client.commands.get(interaction.commandName);
+    if (!command) {
+      console.warn(`[CMD] Unknown command: /${interaction.commandName}`);
+      return;
+    }
+    try {
+      await command.execute(interaction);
+    } catch (err) {
+      console.error(`[CMD] Error executing /${interaction.commandName}:`, err);
+      try {
+        const responder = interaction.replied || interaction.deferred
+          ? interaction.followUp.bind(interaction)
+          : interaction.reply.bind(interaction);
+        await responder({ content: '❌ Произошла ошибка при выполнении команды.', ephemeral: true });
+      } catch {}
+    }
+    return;
+  }
+
+  // ── Buttons, select menus, modals ──
   const cid = interaction.customId || '';
   const isVerification = VERIFICATION_IDS.some(prefix => cid.startsWith(prefix));
 

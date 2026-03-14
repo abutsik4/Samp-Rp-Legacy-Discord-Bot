@@ -43,6 +43,15 @@ function saveVerifications(list) {
   } catch (err) { console.error('[VERIFY] save error:', err); }
 }
 
+/* ─── async mutex to prevent concurrent read-modify-write ─── */
+let _verifyLock = Promise.resolve();
+function withVerifyLock(fn) {
+  const prev = _verifyLock;
+  let resolve;
+  _verifyLock = new Promise(r => { resolve = r; });
+  return prev.then(() => fn()).finally(resolve);
+}
+
 function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
@@ -490,14 +499,16 @@ async function handleInteraction(interaction) {
 
       try {
         const msg = await adminChannel.send({ embeds: [requestEmbed], components: [row] });
-        // Save message reference
-        requests = loadVerifications();
-        const rec = requests.find(r => r.id === request.id);
-        if (rec) {
-          rec.requestMessageId = msg.id;
-          rec.requestChannelId = msg.channelId;
-          saveVerifications(requests);
-        }
+        // Save message reference safely using the lock
+        await withVerifyLock(async () => {
+          const freshRequests = loadVerifications();
+          const rec = freshRequests.find(r => r.id === request.id);
+          if (rec) {
+            rec.requestMessageId = msg.id;
+            rec.requestChannelId = msg.channelId;
+            saveVerifications(freshRequests);
+          }
+        });
       } catch (err) {
         console.error('[VERIFY] Failed to post request:', err);
       }
@@ -517,13 +528,6 @@ async function handleInteraction(interaction) {
   // ━━━ Button: approve verification ━━━
   if (interaction.isButton() && interaction.customId.startsWith('verify_approve_')) {
     const requestId = interaction.customId.slice('verify_approve_'.length);
-    const requests = loadVerifications();
-    const request = requests.find(r => r.id === requestId);
-
-    if (!request) return interaction.reply({ content: '❌ Заявка не найдена.', ephemeral: true });
-    if (request.status !== 'pending') {
-      return interaction.reply({ content: `ℹ️ Эта заявка уже рассмотрена (${request.status}).`, ephemeral: true });
-    }
 
     // Only admin/mod can approve
     const memberRoles = interaction.member.roles.cache.map(r => r.name);
@@ -532,70 +536,90 @@ async function handleInteraction(interaction) {
       return interaction.reply({ content: '❌ Только администрация может рассматривать заявки.', ephemeral: true });
     }
 
-    try {
-      const guild = interaction.guild;
-      const member = await guild.members.fetch(request.userId);
-      const verifiedRole = guild.roles.cache.find(r => r.name.includes('✅ Верифицирован'));
-      const unverifiedRole = guild.roles.cache.find(r => r.name.includes('❌ Не верифицирован'));
+    // Defer immediately to avoid 3-second timeout
+    await interaction.deferUpdate();
 
-      if (verifiedRole) await member.roles.add(verifiedRole, `Верификация одобрена ${interaction.user.tag}`);
-      if (unverifiedRole && member.roles.cache.has(unverifiedRole.id)) {
-        await member.roles.remove(unverifiedRole, 'Верифицирован');
+    // Use mutex to prevent concurrent read-modify-write corruption
+    return withVerifyLock(async () => {
+      const requests = loadVerifications();
+      const request = requests.find(r => r.id === requestId);
+
+      if (!request) {
+        try { await interaction.followUp({ content: '❌ Заявка не найдена.', ephemeral: true }); } catch {}
+        return;
+      }
+      if (request.status !== 'pending') {
+        try { await interaction.followUp({ content: `ℹ️ Эта заявка уже рассмотрена (${request.status}).`, ephemeral: true }); } catch {}
+        return;
       }
 
-      // Try to set nickname
       try {
-        await member.setNickname(request.nickname, 'Верификация — игровой ник');
-      } catch {} // May fail for owner/admin
+        const guild = interaction.guild;
+        const member = await guild.members.fetch(request.userId);
+        const verifiedRole = guild.roles.cache.find(r => r.name.includes('✅ Верифицирован'));
+        const unverifiedRole = guild.roles.cache.find(r => r.name.includes('❌ Не верифицирован'));
 
-      // Update record
-      request.status = 'approved';
-      request.decidedBy = interaction.user.id;
-      request.deciderTag = interaction.user.tag || interaction.user.username;
-      request.decidedAt = new Date().toISOString();
-      saveVerifications(requests);
+        if (verifiedRole) await member.roles.add(verifiedRole, `Верификация одобрена ${interaction.user.tag}`);
+        if (unverifiedRole && member.roles.cache.has(unverifiedRole.id)) {
+          await member.roles.remove(unverifiedRole, 'Верифицирован');
+        }
 
-      // Update the embed
-      const doneEmbed = baseEmbed()
-        .setTitle('✅ Верификация одобрена')
-        .setDescription(
-          `**Пользователь:** <@${request.userId}> (\`${request.userTag}\`)\n` +
-          `**Игровой ник:** \`${request.nickname}\`\n` +
-          `**Одобрил:** <@${interaction.user.id}>\n` +
-          `**Дата:** <t:${Math.floor(Date.now() / 1000)}:F>`
-        )
-        .setColor(0x22C55E);
+        // Try to set nickname
+        let nickSet = true;
+        try {
+          await member.setNickname(request.nickname, 'Верификация — игровой ник');
+        } catch (nickErr) {
+          nickSet = false;
+          console.warn(`[VERIFY] ⚠️ Could not set nickname for ${request.userTag}: ${nickErr.message}`);
+        }
 
-      await interaction.update({ embeds: [doneEmbed], components: [] });
+        // Update record (re-read to get fresh data inside the lock)
+        const freshRequests = loadVerifications();
+        const freshRequest = freshRequests.find(r => r.id === requestId);
+        if (freshRequest) {
+          freshRequest.status = 'approved';
+          freshRequest.decidedBy = interaction.user.id;
+          freshRequest.deciderTag = interaction.user.tag || interaction.user.username;
+          freshRequest.decidedAt = new Date().toISOString();
+          saveVerifications(freshRequests);
+        }
 
-      // DM the user
-      try {
-        const user = await guild.client.users.fetch(request.userId);
-        await user.send(
-          `✅ **Ваша верификация на сервере SRP | Legacy одобрена!**\n\n` +
-          `Вам выдана роль **✅ Верифицирован** и установлен ник **${request.nickname}**.\n` +
-          `Теперь вы можете запрашивать роли организаций в канале 📩│запрос-роли.`
-        );
-      } catch {}
+        // Update the embed
+        const doneEmbed = baseEmbed()
+          .setTitle('✅ Верификация одобрена')
+          .setDescription(
+            `**Пользователь:** <@${request.userId}> (\`${request.userTag}\`)\n` +
+            `**Игровой ник:** \`${request.nickname}\`\n` +
+            `**Одобрил:** <@${interaction.user.id}>\n` +
+            `**Дата:** <t:${Math.floor(Date.now() / 1000)}:F>` +
+            (nickSet ? '' : '\n\n⚠️ **Ник не установлен** — роль пользователя выше роли бота. Установите ник вручную.')
+          )
+          .setColor(0x22C55E);
 
-      console.log(`[VERIFY] ✅ ${request.userTag} (${request.nickname}) verified by ${interaction.user.tag}`);
-    } catch (err) {
-      console.error('[VERIFY] approve error:', err);
-      return interaction.reply({ content: `❌ Ошибка: ${err.message}`, ephemeral: true });
-    }
-    return;
+        await interaction.editReply({ embeds: [doneEmbed], components: [] });
+
+        // DM the user
+        try {
+          const user = await guild.client.users.fetch(request.userId);
+          await user.send(
+            `✅ **Ваша верификация на сервере SRP | Legacy одобрена!**\n\n` +
+            `Вам выдана роль **✅ Верифицирован**` +
+            (nickSet ? ` и установлен ник **${request.nickname}**` : `. Ник **${request.nickname}** не установлен автоматически — попросите администратора установить его вручную`) +
+            `.\nТеперь вы можете запрашивать роли организаций в канале 📩│запрос-роли.`
+          );
+        } catch {}
+
+        console.log(`[VERIFY] ✅ ${request.userTag} (${request.nickname}) verified by ${interaction.user.tag}`);
+      } catch (err) {
+        console.error('[VERIFY] approve error:', err);
+        try { await interaction.editReply({ content: `❌ Ошибка: ${err.message}`, embeds: [], components: [] }); } catch {}
+      }
+    });
   }
 
   // ━━━ Button: deny verification ━━━
   if (interaction.isButton() && interaction.customId.startsWith('verify_deny_')) {
     const requestId = interaction.customId.slice('verify_deny_'.length);
-    const requests = loadVerifications();
-    const request = requests.find(r => r.id === requestId);
-
-    if (!request) return interaction.reply({ content: '❌ Заявка не найдена.', ephemeral: true });
-    if (request.status !== 'pending') {
-      return interaction.reply({ content: `ℹ️ Эта заявка уже рассмотрена (${request.status}).`, ephemeral: true });
-    }
 
     // Only admin/mod
     const memberRoles = interaction.member.roles.cache.map(r => r.name);
@@ -604,36 +628,53 @@ async function handleInteraction(interaction) {
       return interaction.reply({ content: '❌ Только администрация может рассматривать заявки.', ephemeral: true });
     }
 
-    request.status = 'denied';
-    request.decidedBy = interaction.user.id;
-    request.deciderTag = interaction.user.tag || interaction.user.username;
-    request.decidedAt = new Date().toISOString();
-    saveVerifications(requests);
+    // Defer immediately to avoid 3-second timeout
+    await interaction.deferUpdate();
 
-    const denyEmbed = baseEmbed()
-      .setTitle('❌ Верификация отклонена')
-      .setDescription(
-        `**Пользователь:** <@${request.userId}> (\`${request.userTag}\`)\n` +
-        `**Игровой ник:** \`${request.nickname}\`\n` +
-        `**Отклонил:** <@${interaction.user.id}>\n` +
-        `**Дата:** <t:${Math.floor(Date.now() / 1000)}:F>`
-      )
-      .setColor(0xEF4444);
+    // Use mutex to prevent concurrent read-modify-write corruption
+    return withVerifyLock(async () => {
+      const requests = loadVerifications();
+      const request = requests.find(r => r.id === requestId);
 
-    await interaction.update({ embeds: [denyEmbed], components: [] });
+      if (!request) {
+        try { await interaction.followUp({ content: '❌ Заявка не найдена.', ephemeral: true }); } catch {}
+        return;
+      }
+      if (request.status !== 'pending') {
+        try { await interaction.followUp({ content: `ℹ️ Эта заявка уже рассмотрена (${request.status}).`, ephemeral: true }); } catch {}
+        return;
+      }
 
-    // DM the user
-    try {
-      const user = await interaction.guild.client.users.fetch(request.userId);
-      await user.send(
-        `❌ **Ваша заявка на верификацию на сервере SRP | Legacy отклонена.**\n\n` +
-        `Возможные причины: неверный ник, неполные данные.\n` +
-        `Вы можете подать повторную заявку с корректными данными.`
-      );
-    } catch {}
+      request.status = 'denied';
+      request.decidedBy = interaction.user.id;
+      request.deciderTag = interaction.user.tag || interaction.user.username;
+      request.decidedAt = new Date().toISOString();
+      saveVerifications(requests);
 
-    console.log(`[VERIFY] ❌ ${request.userTag} (${request.nickname}) denied by ${interaction.user.tag}`);
-    return;
+      const denyEmbed = baseEmbed()
+        .setTitle('❌ Верификация отклонена')
+        .setDescription(
+          `**Пользователь:** <@${request.userId}> (\`${request.userTag}\`)\n` +
+          `**Игровой ник:** \`${request.nickname}\`\n` +
+          `**Отклонил:** <@${interaction.user.id}>\n` +
+          `**Дата:** <t:${Math.floor(Date.now() / 1000)}:F>`
+        )
+        .setColor(0xEF4444);
+
+      await interaction.editReply({ embeds: [denyEmbed], components: [] });
+
+      // DM the user
+      try {
+        const user = await interaction.guild.client.users.fetch(request.userId);
+        await user.send(
+          `❌ **Ваша заявка на верификацию на сервере SRP | Legacy отклонена.**\n\n` +
+          `Возможные причины: неверный ник, неполные данные.\n` +
+          `Вы можете подать повторную заявку с корректными данными.`
+        );
+      } catch {}
+
+      console.log(`[VERIFY] ❌ ${request.userTag} (${request.nickname}) denied by ${interaction.user.tag}`);
+    });
   }
 }
 

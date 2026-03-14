@@ -1,1 +1,50 @@
-[]
+[
+  {
+    "id": "mmqjqu0si0ao0v",
+    "userId": "670321622330114058",
+    "userTag": "kleshmite",
+    "nickname": "Daniel_Ananev",
+    "server": "https://samp-rp.online/members/daniel_ananev.915021/",
+    "about": "Мастер спорта по шляпам",
+    "status": "approved",
+    "decidedBy": "143160841225633792",
+    "deciderTag": "aaronjepsen06",
+    "denyReason": null,
+    "createdAt": "2026-03-14T16:35:06.748Z",
+    "decidedAt": "2026-03-14T17:40:00.000Z",
+    "requestMessageId": "1482416801160626359",
+    "requestChannelId": "1480689343566713016"
+  },
+  {
+    "id": "mmqjyn43g21sbr",
+    "userId": "1361703470239055874",
+    "userTag": "w1nter1o",
+    "nickname": "El_Winter",
+    "server": "https://samp-rp.su/members/el_winter.992824/",
+    "about": "ЛВа, Капитан Боец СО",
+    "status": "approved",
+    "decidedBy": "143160841225633792",
+    "deciderTag": "aaronjepsen06",
+    "denyReason": null,
+    "createdAt": "2026-03-14T16:41:11.043Z",
+    "decidedAt": "2026-03-14T17:40:00.000Z",
+    "requestMessageId": "1482418328764158108",
+    "requestChannelId": "1480689343566713016"
+  },
+  {
+    "id": "mmqlf0sob8d9yd",
+    "userId": "660202445481312277",
+    "userTag": "joniketsvil1920",
+    "nickname": "Santa_Clous",
+    "server": "https://samp-rp.su/members/santa_clous.650471/",
+    "about": "Lva",
+    "status": "approved",
+    "decidedBy": "143160841225633792",
+    "deciderTag": "aaronjepsen06",
+    "denyReason": null,
+    "createdAt": "2026-03-14T17:21:54.888Z",
+    "decidedAt": "2026-03-14T17:22:44.445Z",
+    "requestMessageId": "1482428579324104916",
+    "requestChannelId": "1480689343566713016"
+  }
+]

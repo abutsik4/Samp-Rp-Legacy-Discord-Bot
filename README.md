@@ -122,7 +122,7 @@ Modal form-based verification flow:
 3. Staff approves → bot assigns Verified role, sets nickname, sends DM confirmation
 4. Staff denies → bot sends DM with rejection reason
 
-Includes duplicate-request blocking and paginated pending queue.
+Includes duplicate-request blocking, paginated pending queue, and **mutex-based concurrency control** — multiple simultaneous approvals are safely serialized to prevent data loss.
 
 ### 4. Temporary Voice Channels
 
@@ -150,6 +150,7 @@ Built with **Next.js 16 App Router**, **React 19**, and **Tailwind CSS v4**. Fea
 | **Guides** | Dynamic per-faction guide embeds — compose content and send/edit directly in Discord channels |
 | **Embeds** | Rich embed builder — create, edit, duplicate, send to any channel; per-embed update/delete on multi-embed messages |
 | **Roles** | Auto-role configuration for new members |
+| **Welcome** | Configure auto-welcome messages for new members — toggle, channel select, message template with placeholders, live preview |
 | **Role Requests** | Pending request queue, approve/deny from the dashboard, deploy request/removal panels |
 | **Stats** | Server activity statistics |
 
@@ -184,6 +185,7 @@ All dashboard actions proxy through authenticated Next.js API routes to the Expr
 | `/rules` | Admin | Post server rules |
 | `/setup_recruitment` | Admin | Initialize recruitment infrastructure |
 | `/settings-preview` | Admin | Preview current bot settings |
+| `/fix-voice` | Admin | Enable voice activation (VAD) on all voice channels |
 | `/welcome-preview` | Admin | Preview welcome message |
 | `/giveaway-template` | Fun | Create giveaway templates |
 | `/help` | Utility | Command reference |
@@ -280,6 +282,7 @@ Additional systemd units are provided for health monitoring and failure alerting
 │       ├── guides/                  # Channel guide embeds
 │       ├── embeds/                  # Rich embed builder
 │       ├── roles/                   # Auto-role configuration
+│       ├── welcome/                 # Welcome message configuration
 │       ├── role-requests/           # Role request management
 │       ├── stats/                   # Server statistics
 │       └── api/proxy/               # Authenticated proxy routes → Express API
