@@ -30,6 +30,7 @@ export default function RootLayout({
             <Link href="/embeds" className="hover:text-white transition-colors">Embeds</Link>
             <Link href="/channels" className="hover:text-white transition-colors">📂 Channels</Link>
             <Link href="/roles" className="hover:text-white transition-colors">Roles</Link>
+            <Link href="/welcome" className="hover:text-white transition-colors">👋 Welcome</Link>
             <Link href="/factions" className="hover:text-white transition-colors">Factions</Link>
             <Link href="/guides" className="hover:text-white transition-colors">📖 Гайды</Link>
             <Link href="/role-requests" className="font-bold text-pink-400 hover:text-pink-300 transition-colors">📩 Запросы</Link>

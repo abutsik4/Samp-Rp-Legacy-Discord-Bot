@@ -117,24 +117,32 @@ function roleNameForType(factionTag, roleTypeKey) {
 }
 
 /* ─── staff check helper ─── */
-const STAFF_PATTERNS = ['🛡️ Админ', '🔨 Модератор', '🛠️ Владелец', '⭐ Гл. Администратор', '👑 Зам. Гл. Админа'];
+const STAFF_PATTERNS = [
+  'Админ', 'Модератор', 'Владелец', 'Редактор',
+  'Гл. Администратор', 'Зам. Гл. Админа'
+];
 function isStaff(names) {
   return names.some(n => STAFF_PATTERNS.some(p => n.includes(p)));
 }
 
 /* ─── curator → factions mapping ─── */
 const CURATOR_FACTIONS = {
-  '🏛️ Следящий за Mayor/Court': ['MAYOR', 'COURT'],
-  '🕵️ Следящий за FBI':         ['FBI'],
-  '🚓 Следящий за SAPD':        ['LSPD', 'SFPD', 'LVPD'],
-  '🪩 Следящий за Army':        ['ARMY-LV', 'ARMY-SF'],
-  '🚑 Следящий за MOH':         ['MOH'],
-  '🏫 Следящий за Inst':        ['INST'],
+  'Следящий за Mayor/Court': ['MAYOR', 'COURT'],
+  'Следящий за Mayor':       ['MAYOR'],
+  'Следящий за Court':       ['COURT'],
+  'Следящий за FBI':         ['FBI'],
+  'Следящий за SAPD':        ['LSPD', 'SFPD', 'LVPD'],
+  'Следящий за LSPD':        ['LSPD'],
+  'Следящий за SFPD':        ['SFPD'],
+  'Следящий за LVPD':        ['LVPD'],
+  'Следящий за Army':        ['ARMY-LV', 'ARMY-SF'],
+  'Следящий за MOH':         ['MOH'],
+  'Следящий за Inst':        ['INST'],
 };
 
 function isCuratorFor(names, factionTag) {
-  for (const [curatorName, tags] of Object.entries(CURATOR_FACTIONS)) {
-    if (tags.includes(factionTag) && names.some(n => n.includes(curatorName))) return true;
+  for (const [curatorKey, tags] of Object.entries(CURATOR_FACTIONS)) {
+    if (tags.includes(factionTag) && names.some(n => n.includes(curatorKey))) return true;
   }
   return false;
 }
@@ -489,7 +497,7 @@ async function handleInteraction(interaction) {
       return interaction.reply({
         content:
           `❌ **У вас нет прав** одобрить этот запрос.\n` +
-          `Могут одобрить: **👑 Лидер** организации **${request.factionTitle}**, а также **🛡️ Админ** и **🔨 Модератор**.` +
+          `Могут одобрить: **👑 Лидер** организации **${request.factionTitle}**, **Следящий за** этой организацией, а также **🛡️ Админ** и **🔨 Модератор**.` +
           ((request.roleType || 'member') === 'member' ? `\nТакже может одобрить: **👔 Зам. Лидера**.` : ''),
         ephemeral: true
       });

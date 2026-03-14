@@ -532,6 +532,9 @@ async function handleInteraction(interaction) {
       return interaction.reply({ content: '❌ Только администрация может рассматривать заявки.', ephemeral: true });
     }
 
+    // Defer immediately to avoid 3-second timeout
+    await interaction.deferUpdate();
+
     try {
       const guild = interaction.guild;
       const member = await guild.members.fetch(request.userId);
@@ -544,9 +547,13 @@ async function handleInteraction(interaction) {
       }
 
       // Try to set nickname
+      let nickSet = true;
       try {
         await member.setNickname(request.nickname, 'Верификация — игровой ник');
-      } catch {} // May fail for owner/admin
+      } catch (nickErr) {
+        nickSet = false;
+        console.warn(`[VERIFY] ⚠️ Could not set nickname for ${request.userTag}: ${nickErr.message}`);
+      }
 
       // Update record
       request.status = 'approved';
@@ -562,26 +569,28 @@ async function handleInteraction(interaction) {
           `**Пользователь:** <@${request.userId}> (\`${request.userTag}\`)\n` +
           `**Игровой ник:** \`${request.nickname}\`\n` +
           `**Одобрил:** <@${interaction.user.id}>\n` +
-          `**Дата:** <t:${Math.floor(Date.now() / 1000)}:F>`
+          `**Дата:** <t:${Math.floor(Date.now() / 1000)}:F>` +
+          (nickSet ? '' : '\n\n⚠️ **Ник не установлен** — роль пользователя выше роли бота или он является владельцем сервера. Установите ник вручную.')
         )
         .setColor(0x22C55E);
 
-      await interaction.update({ embeds: [doneEmbed], components: [] });
+      await interaction.editReply({ embeds: [doneEmbed], components: [] });
 
       // DM the user
       try {
         const user = await guild.client.users.fetch(request.userId);
         await user.send(
           `✅ **Ваша верификация на сервере SRP | Legacy одобрена!**\n\n` +
-          `Вам выдана роль **✅ Верифицирован** и установлен ник **${request.nickname}**.\n` +
-          `Теперь вы можете запрашивать роли организаций в канале 📩│запрос-роли.`
+          `Вам выдана роль **✅ Верифицирован**` +
+          (nickSet ? ` и установлен ник **${request.nickname}**` : `. Ник **${request.nickname}** не установлен автоматически — попросите администратора установить его вручную`) +
+          `.\nТеперь вы можете запрашивать роли организаций в канале 📩│запрос-роли.`
         );
       } catch {}
 
       console.log(`[VERIFY] ✅ ${request.userTag} (${request.nickname}) verified by ${interaction.user.tag}`);
     } catch (err) {
       console.error('[VERIFY] approve error:', err);
-      return interaction.reply({ content: `❌ Ошибка: ${err.message}`, ephemeral: true });
+      try { await interaction.editReply({ content: `❌ Ошибка: ${err.message}`, embeds: [], components: [] }); } catch {}
     }
     return;
   }
@@ -604,6 +613,8 @@ async function handleInteraction(interaction) {
       return interaction.reply({ content: '❌ Только администрация может рассматривать заявки.', ephemeral: true });
     }
 
+    await interaction.deferUpdate();
+
     request.status = 'denied';
     request.decidedBy = interaction.user.id;
     request.deciderTag = interaction.user.tag || interaction.user.username;
@@ -620,7 +631,7 @@ async function handleInteraction(interaction) {
       )
       .setColor(0xEF4444);
 
-    await interaction.update({ embeds: [denyEmbed], components: [] });
+    await interaction.editReply({ embeds: [denyEmbed], components: [] });
 
     // DM the user
     try {

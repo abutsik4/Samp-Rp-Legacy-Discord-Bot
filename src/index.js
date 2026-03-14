@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const {
   Client,
+  Collection,
   GatewayIntentBits,
   Events,
   ChannelType
@@ -719,12 +720,38 @@ async function warnThrottled(key, text, minIntervalMs) {
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildInvites,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildVoiceStates,
     
   ]
 });
+
+// ── Load slash commands from src/commands/**/*.js into client.commands ──
+client.commands = new Collection();
+
+function loadCommandsRecursive(dir) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      loadCommandsRecursive(fullPath);
+    } else if (entry.isFile() && entry.name.endsWith('.js')) {
+      try {
+        const command = require(fullPath);
+        if (command.data && typeof command.execute === 'function') {
+          client.commands.set(command.data.name, command);
+          console.log(`[CMD] Loaded: /${command.data.name}`);
+        }
+      } catch (err) {
+        console.error(`[CMD] Failed to load ${fullPath}:`, err.message);
+      }
+    }
+  }
+}
+
+loadCommandsRecursive(path.join(__dirname, 'commands'));
+console.log(`[CMD] ${client.commands.size} slash commands loaded.`);
 
 // Runtime safety: log + alert on unexpected failures.
 process.on('unhandledRejection', err => {
@@ -843,7 +870,7 @@ client.once(Events.ClientReady, async c => {
   if (guildForCleanup) {
     try { await cleanupTempVoice(guildForCleanup); } catch (e) { console.error('[TEMP-VOICE] Startup cleanup error:', e); }
   }
-  console.log('[CMD] Slash command runtime is disabled. WebUI is the control plane.');
+  console.log(`[CMD] ${client.commands.size} slash commands ready.`);
 });
 
 // Temp voice channel handler (join-to-create)
@@ -888,6 +915,14 @@ client.on(Events.GuildMemberAdd, async member => {
     }
   }
 
+  // Always give non-bots the ❌ Не верифицирован role
+  if (!member.user.bot) {
+    const unverifiedRole = member.guild.roles.cache.find(r => r.name.includes('❌ Не верифицирован'));
+    if (unverifiedRole && !rolesToAdd.includes(unverifiedRole.id)) {
+      rolesToAdd.push(unverifiedRole.id);
+    }
+  }
+
   const uniqueRoles = [...new Set(rolesToAdd)].filter(id =>
     member.guild.roles.cache.has(id)
   );
@@ -895,8 +930,40 @@ client.on(Events.GuildMemberAdd, async member => {
 
   try {
     await member.roles.add(uniqueRoles, `Auto roles by ${BOT_ALERT_PREFIX}`);
+    if (!member.user.bot) {
+      console.log(`[AUTO-ROLE] ❌ Assigned unverified role to ${member.user.tag}`);
+    }
   } catch (err) {
     console.error('Error assigning auto roles:', err);
+  }
+
+  // ── Welcome message ──
+  if (!member.user.bot) {
+    try {
+      const cfg = loadConfigFromDisk();
+      const welcome = cfg.welcome || {};
+      if (welcome.enabled && welcome.channelId && welcome.channelId !== '000000000000000000') {
+        const welcomeChannel = member.guild.channels.cache.get(welcome.channelId);
+        if (welcomeChannel && welcomeChannel.isTextBased()) {
+          const brandName = (cfg.branding?.name) || 'SRP Legacy';
+          const welcomeText = (welcome.message || `Добро пожаловать на ${brandName}!`)
+            .replace(/\{user\}/g, `<@${member.id}>`)
+            .replace(/\{username\}/g, member.user.username)
+            .replace(/\{server\}/g, member.guild.name)
+            .replace(/\{memberCount\}/g, String(member.guild.memberCount));
+
+          const embed = baseEmbed()
+            .setTitle(`👋 Добро пожаловать на ${brandName}`)
+            .setDescription(welcomeText)
+            .setThumbnail(member.user.displayAvatarURL({ size: 256 }));
+
+          await welcomeChannel.send({ embeds: [embed] });
+          console.log(`[WELCOME] Sent welcome message for ${member.user.tag}`);
+        }
+      }
+    } catch (err) {
+      console.error('[WELCOME] Error sending welcome message:', err);
+    }
   }
 });
 
@@ -941,9 +1008,32 @@ client.on(Events.MessageCreate, async message => {
   }
 });
 
-// ── Interaction handler (buttons, select menus, modals) ──
+// ── Interaction handler (slash commands, buttons, select menus, modals) ──
 const VERIFICATION_IDS = ['verification_start', 'verification_form', 'verify_approve_', 'verify_deny_', 'verify_pending_'];
 client.on(Events.InteractionCreate, async interaction => {
+
+  // ── Slash commands ──
+  if (interaction.isChatInputCommand()) {
+    const command = client.commands.get(interaction.commandName);
+    if (!command) {
+      console.warn(`[CMD] Unknown command: /${interaction.commandName}`);
+      return;
+    }
+    try {
+      await command.execute(interaction);
+    } catch (err) {
+      console.error(`[CMD] Error executing /${interaction.commandName}:`, err);
+      try {
+        const responder = interaction.replied || interaction.deferred
+          ? interaction.followUp.bind(interaction)
+          : interaction.reply.bind(interaction);
+        await responder({ content: '❌ Произошла ошибка при выполнении команды.', ephemeral: true });
+      } catch {}
+    }
+    return;
+  }
+
+  // ── Buttons, select menus, modals ──
   const cid = interaction.customId || '';
   const isVerification = VERIFICATION_IDS.some(prefix => cid.startsWith(prefix));
 
@@ -2145,6 +2235,59 @@ app.post('/api/verification-guide', async (req, res) => {
   }
 });
 
+// ── Post temp-voice guidance to all faction 📌│объявления channels ──
+app.post('/api/temp-voice-guide', async (req, res) => {
+  try {
+    const guildId = process.env.GUILD_ID;
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) return res.status(500).json({ error: 'Guild not found' });
+    await guild.channels.fetch();
+
+    const { FACTIONS } = require('./utils/factionManager');
+    const { baseEmbed } = require('./utils/embedFactory');
+
+    const embed = baseEmbed()
+      .setTitle('📖 Как использовать «➕ Создать канал»')
+      .setDescription(
+        '**Временные голосовые каналы** позволяют создавать личные комнаты прямо в вашей организации.\n\n' +
+        '**Как это работает:**\n\n' +
+        '1️⃣ Найдите в вашей категории канал **➕ Создать канал**\n\n' +
+        '2️⃣ **Зайдите** в этот голосовой канал (просто нажмите на него)\n\n' +
+        '3️⃣ Бот автоматически создаст **личный голосовой канал** с вашим именем: `🔉 Ваш Ник`\n\n' +
+        '4️⃣ Вы будете **перемещены** в новый канал автоматически\n\n' +
+        '5️⃣ В вашем канале вы можете: **перемещать**, **мутить** участников и **управлять** каналом\n\n' +
+        '6️⃣ Когда **все покинут** канал — он будет **удалён автоматически**\n\n' +
+        '> 💡 **Совет:** Лидеры и Зам. Лидера могут перемещать участников из **Основных Каналов** в каналы организации.'
+      )
+      .setColor(0x5865F2);
+
+    let posted = 0;
+    for (const faction of FACTIONS) {
+      const catName = `${faction.emoji} ${faction.title}`;
+      const cat = guild.channels.cache.find(c =>
+        c.name === catName && c.type === 4 /* GuildCategory */
+      );
+      if (!cat) continue;
+
+      const announceChannel = guild.channels.cache.find(c =>
+        c.name === '📌│объявления' && c.parentId === cat.id
+      );
+      if (!announceChannel) continue;
+
+      try {
+        await announceChannel.send({ embeds: [embed] });
+        posted++;
+      } catch (e) {
+        console.error(`[GUIDE] Failed to post in ${catName}:`, e.message);
+      }
+    }
+
+    res.json({ ok: true, message: `Гайд опубликован в ${posted} из ${FACTIONS.length} организаций` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Post pending-requests admin panel in 📋│заявки-верификации ──
 app.post('/api/pending-panel', async (req, res) => {
   try {
@@ -2316,6 +2459,64 @@ app.get('/api/auto-roles', async (req, res) => {
   try {
     const autoRoles = typeof loadAutoRoles === 'function' ? loadAutoRoles() : {};
     res.json({ autoRoles: autoRoles || {} });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// API: Get welcome config
+app.get('/api/welcome', async (req, res) => {
+  try {
+    const cfg = loadConfigFromDisk();
+    const welcome = cfg.welcome || { enabled: false, channelId: '', message: '', autoRoleIds: [] };
+    res.json({ welcome });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// API: Save welcome config
+app.post('/api/welcome', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const cfg = loadConfigFromDisk();
+    const current = cfg.welcome || {};
+    cfg.welcome = {
+      enabled: body.enabled !== undefined ? !!body.enabled : !!current.enabled,
+      channelId: typeof body.channelId === 'string' ? body.channelId.trim() : (current.channelId || ''),
+      message: typeof body.message === 'string' ? body.message : (current.message || ''),
+      autoRoleIds: Array.isArray(body.autoRoleIds) ? body.autoRoleIds.filter(id => typeof id === 'string') : (current.autoRoleIds || [])
+    };
+    const saved = saveConfigToDisk(cfg);
+    if (!saved) return res.status(500).json({ error: 'Failed to write config.json' });
+    res.json({ ok: true, welcome: cfg.welcome });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// API: Preview welcome embed (send to channel)
+app.post('/api/welcome/preview', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const channelId = body.channelId;
+    if (!channelId) return res.status(400).json({ error: 'channelId required' });
+    const guildId = process.env.GUILD_ID;
+    if (!guildId) return res.status(500).json({ error: 'GUILD_ID not set' });
+    const guild = await client.guilds.fetch(guildId);
+    const channel = await guild.channels.fetch(channelId);
+    if (!channel || !channel.isTextBased()) return res.status(400).json({ error: 'Invalid text channel' });
+
+    const cfg = loadConfigFromDisk();
+    const welcomeMsg = cfg.welcome?.message || 'Welcome!';
+    const brandName = (cfg.branding?.name) || 'SRP Legacy';
+
+    const embed = baseEmbed()
+      .setTitle(`👋 Добро пожаловать на ${brandName}`)
+      .setDescription(welcomeMsg);
+
+    await channel.send({ embeds: [embed] });
+    res.json({ ok: true, message: 'Preview sent' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
