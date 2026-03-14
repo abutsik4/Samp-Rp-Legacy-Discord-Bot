@@ -19,18 +19,20 @@ async function handleVoiceStateUpdate(oldState, newState) {
 
     // ── User joined a "create" trigger channel ──
     if (newState.channel && newState.channel.name === TRIGGER_CHANNEL_NAME) {
-        // Only faction members (Участник / Зам. Лидера / Лидер) + staff can create
+        // Any member with a faction role, staff role, or admin permissions can create
         const memberRoles = member.roles.cache.map(r => r.name);
         const hasFactionRole = memberRoles.some(n =>
             n.includes('│ Участник') || n.includes('│ Зам. Лидера') || n.includes('│ Лидер')
         );
         const hasStaff = memberRoles.some(n =>
-            n.includes('🛡️ Админ') || n.includes('🔨 Модератор') ||
-            n.includes('🛠️ Владелец') || n.includes('⭐ Гл. Администратор') ||
-            n.includes('👑 Зам. Гл. Админа') || n.includes('Следящий за')
+            n.includes('Админ') || n.includes('Модератор') ||
+            n.includes('Владелец') || n.includes('Редактор') ||
+            n.includes('Следящий за')
         );
+        const hasAdminPerm = member.permissions.has(P.Administrator) ||
+            member.permissions.has(P.ManageGuild);
 
-        if (!hasFactionRole && !hasStaff) {
+        if (!hasFactionRole && !hasStaff && !hasAdminPerm) {
             try { await member.voice.disconnect('Нет прав для создания канала'); } catch {}
             return;
         }
@@ -49,8 +51,21 @@ async function handleVoiceStateUpdate(oldState, newState) {
             // Add creator-specific overwrite so they can manage their channel
             overwrites.push({
                 id: member.id,
-                allow: [P.ManageChannels, P.MoveMembers, P.MuteMembers, P.Connect, P.Speak]
+                allow: [P.ManageChannels, P.MoveMembers, P.MuteMembers, P.Connect, P.Speak, P.UseVAD]
             });
+
+            // Ensure @everyone can use Voice Activity Detection (not forced Push-to-Talk)
+            const everyoneOverwrite = overwrites.find(ow => ow.id === guild.id);
+            if (everyoneOverwrite) {
+                if (Array.isArray(everyoneOverwrite.allow)) {
+                    if (!everyoneOverwrite.allow.includes('UseVAD')) everyoneOverwrite.allow.push('UseVAD');
+                }
+            } else {
+                overwrites.push({
+                    id: guild.id,
+                    allow: [P.UseVAD]
+                });
+            }
 
             const tempChannel = await guild.channels.create({
                 name: `🔉 ${member.displayName}`,

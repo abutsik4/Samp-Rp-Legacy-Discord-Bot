@@ -249,6 +249,7 @@ async function findOrCreateChannel(guild, name, type, parentId, overwrites, opts
             parent: parentId || undefined,
             permissionOverwrites: overwrites || [],
             userLimit: opts.userLimit || undefined,
+            rateLimitPerUser: opts.slowmode || undefined,
             reason: 'SRP Legacy — авто-настройка'
         });
     } else {
@@ -257,6 +258,9 @@ async function findOrCreateChannel(guild, name, type, parentId, overwrites, opts
         }
         if (opts.userLimit != null && ch.userLimit !== opts.userLimit) {
             try { await ch.setUserLimit(opts.userLimit); } catch (_) {}
+        }
+        if (opts.slowmode != null && ch.rateLimitPerUser !== opts.slowmode) {
+            try { await ch.setRateLimitPerUser(opts.slowmode); } catch (_) {}
         }
     }
     return ch;
@@ -296,8 +300,8 @@ async function deployStructure(guild) {
     // Count tasks
     let factionTasks = 0;
     for (const f of FACTIONS) factionTasks += 3 + 1 + f.textChannels.length + f.voiceChannels.length + 1; // +1 temp voice
-    // 1(@everyone) + roles + 1(senior perms) + 1(migration) + 4(info cat) + 5(admin cat) + factions
-    const totalTasks = 1 + GLOBAL_ROLES.length + 1 + 1 + 4 + 5 + factionTasks;
+    // 1(@everyone) + roles + 1(senior perms) + 1(migration) + 4(info cat) + 5(general cat) + 5(admin cat) + factions
+    const totalTasks = 1 + GLOBAL_ROLES.length + 1 + 1 + 4 + 5 + 5 + factionTasks;
     setupStatus = { active: true, progress: 0, total: totalTasks, currentTask: 'Запуск...' };
 
     try {
@@ -423,6 +427,54 @@ async function deployStructure(guild) {
         ]);
         await delay(300);
 
+        // ═══ 3b. 💬 Основные Каналы — общий чат + голос для всех ═══
+        step('💬 Категория: Основные Каналы...');
+        const generalCat = await findOrCreateCategory(guild, '💬 Основные Каналы', [
+            { id: everyone.id, allow: [P.ViewChannel, P.ReadMessageHistory, P.Connect, P.Speak] }
+        ]);
+        await delay(300);
+
+        // Text channel: unverified = slowmode 30s (rateLimitPerUser), verified = exempt via ManageMessages
+        step('💬 Канал: общий-чат...');
+        await findOrCreateChannel(guild, '💬│общий-чат', ChannelType.GuildText, generalCat.id, [
+            { id: everyone.id, allow: [P.ViewChannel, P.ReadMessageHistory, P.SendMessages] },
+            { id: verified.id, allow: [P.ViewChannel, P.ReadMessageHistory, P.SendMessages, P.ManageMessages, P.AttachFiles, P.EmbedLinks] },
+            ...seniorTextOW,
+            { id: adminRole.id, allow: [P.ViewChannel, P.SendMessages, P.ManageMessages, P.ReadMessageHistory] },
+            { id: modRole.id, allow: [P.ViewChannel, P.SendMessages, P.ManageMessages, P.ReadMessageHistory] }
+        ], { slowmode: 30 });
+        await delay(300);
+
+        step('🔊 Голос: Общий...');
+        await findOrCreateChannel(guild, '🔊 Общий', ChannelType.GuildVoice, generalCat.id, [
+            { id: everyone.id, allow: [P.ViewChannel, P.Connect, P.Speak] },
+            ...seniorVoiceOW,
+            { id: adminRole.id, allow: [P.ViewChannel, P.Connect, P.Speak, P.MoveMembers, P.MuteMembers] },
+            { id: modRole.id, allow: [P.ViewChannel, P.Connect, P.Speak, P.MoveMembers] }
+        ]);
+        await delay(300);
+
+        step('🤝 Голос: 1×1...');
+        await findOrCreateChannel(guild, '🤝 Голос 1×1', ChannelType.GuildVoice, generalCat.id, [
+            { id: everyone.id, allow: [P.ViewChannel, P.Connect, P.Speak] },
+            ...seniorVoiceOW,
+            { id: adminRole.id, allow: [P.ViewChannel, P.Connect, P.Speak, P.MoveMembers, P.MuteMembers] },
+            { id: modRole.id, allow: [P.ViewChannel, P.Connect, P.Speak, P.MoveMembers] }
+        ], { userLimit: 2 });
+        await delay(300);
+
+        step('👥 Голос: 2×2...');
+        await findOrCreateChannel(guild, '👥 Голос 2×2', ChannelType.GuildVoice, generalCat.id, [
+            { id: everyone.id, allow: [P.ViewChannel, P.Connect, P.Speak] },
+            ...seniorVoiceOW,
+            { id: adminRole.id, allow: [P.ViewChannel, P.Connect, P.Speak, P.MoveMembers, P.MuteMembers] },
+            { id: modRole.id, allow: [P.ViewChannel, P.Connect, P.Speak, P.MoveMembers] }
+        ], { userLimit: 4 });
+        await delay(300);
+
+        // Store generalCat id for later (leaders need MoveMembers from it)
+        const generalCatId = generalCat.id;
+
         // ═══ 4. 🛡️ АДМИНИСТРАЦИЯ ═══
         step('🛡️ Категория: Администрация...');
         const adminCat = await findOrCreateCategory(guild, '🛡️ Администрация', [
@@ -482,7 +534,7 @@ async function deployStructure(guild) {
             ];
             for (const rd of roleDefs) {
                 const rName = `${rd.emoji} ${faction.tag} │ ${rd.suffix}`;
-                fR[rd.key] = await findOrCreateRole(guild, rName, faction.color);
+                fR[rd.key] = await findOrCreateRole(guild, rName, faction.color, [], { hoist: true });
                 step(`  → ${rName}`);
                 await delay(300);
             }
@@ -595,6 +647,17 @@ async function deployStructure(guild) {
             ];
             await findOrCreateChannel(guild, '➕ Создать канал', ChannelType.GuildVoice, cat.id, tempVoiceOW);
             await delay(300);
+
+            // ── Grant leaders/deputies MoveMembers in Основные Каналы voice channels ──
+            const generalVoice = guild.channels.cache.filter(c =>
+                c.type === ChannelType.GuildVoice && c.parentId === generalCatId
+            );
+            for (const [, gvc] of generalVoice) {
+                try {
+                    await gvc.permissionOverwrites.edit(fR.leader.id, { MoveMembers: true });
+                    await gvc.permissionOverwrites.edit(fR.deputy.id, { MoveMembers: true });
+                } catch (_) {}
+            }
         }
 
         setupStatus.currentTask = '✅ Развёртывание завершено успешно!';
